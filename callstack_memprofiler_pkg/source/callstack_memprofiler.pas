@@ -67,6 +67,9 @@ type
     procedure VTOnCompareNodes(Sender: TBaseVirtualTree; Node1, Node2: PVirtualNode; Column: TColumnIndex; var Result: Integer);
     procedure VTOnFreeNode(Sender: TBaseVirtualTree; Node: PVirtualNode);
     procedure VTOnExpanded(Sender: TBaseVirtualTree; Node: PVirtualNode);
+    procedure VTOnBeforeCellPaint(Sender: TBaseVirtualTree;
+      TargetCanvas: TCanvas; Node: PVirtualNode; Column: TColumnIndex;
+      CellPaintMode: TVTCellPaintMode; CellRect: TRect; var ContentRect: TRect);
     procedure VTOnDrawText(Sender: TBaseVirtualTree; TargetCanvas: TCanvas;
       Node: PVirtualNode; Column: TColumnIndex; const CellText: String;
       const CellRect: TRect; var DefaultDraw: Boolean);
@@ -423,27 +426,31 @@ begin
   TLazVirtualStringTree(Sender).Header.AutoFitColumns(False);
 end;
 
+procedure TEventsHandler.VTOnBeforeCellPaint(Sender: TBaseVirtualTree;
+  TargetCanvas: TCanvas; Node: PVirtualNode; Column: TColumnIndex;
+  CellPaintMode: TVTCellPaintMode; CellRect: TRect; var ContentRect: TRect);
+begin
+  case Column of
+    1..3: begin
+            if vsSelected in Node^.States then TargetCanvas.Brush.Color:=$A5FFA5 else TargetCanvas.Brush.Color:=$DCFFDC;
+            TargetCanvas.FillRect(CellRect);
+          end;
+    4..8: begin
+            if vsSelected in Node^.States then TargetCanvas.Brush.Color:=$A5A5FF else TargetCanvas.Brush.Color:=$DCDCFF;
+            TargetCanvas.FillRect(CellRect);
+          end;
+    9..13: begin
+            if vsSelected in Node^.States then TargetCanvas.Brush.Color:=$FFA5A5 else TargetCanvas.Brush.Color:=$DCDCDC;
+            TargetCanvas.FillRect(CellRect);
+          end;
+  end;
+end;
+
 procedure TEventsHandler.VTOnDrawText(Sender: TBaseVirtualTree;
   TargetCanvas: TCanvas; Node: PVirtualNode; Column: TColumnIndex;
   const CellText: String; const CellRect: TRect; var DefaultDraw: Boolean);
 begin
-  case Column of
-    1..3: begin
-            TargetCanvas.Font.Color:=clBlack;
-            if vsSelected in Node^.States then TargetCanvas.Brush.Color:=$A5FFA5 else TargetCanvas.Brush.Color:=$DCFFDC;
-            TargetCanvas.Clear;
-          end;
-    4..8: begin
-            TargetCanvas.Font.Color:=clBlack;
-            if vsSelected in Node^.States then TargetCanvas.Brush.Color:=$A5A5FF else TargetCanvas.Brush.Color:=$DCDCFF;
-            TargetCanvas.Clear;
-          end;
-    9..13: begin
-            TargetCanvas.Font.Color:=clBlack;
-            if vsSelected in Node^.States then TargetCanvas.Brush.Color:=$FFA5A5 else TargetCanvas.Brush.Color:=$DCDCDC;
-            TargetCanvas.Clear;
-          end;
-  end;
+  TargetCanvas.Font.Color:=clBlack;
 end;
 
 procedure TEventsHandler.FormOnClose(Sender: TObject; var CloseAction: TCloseAction);
@@ -563,6 +570,7 @@ begin
   vt.OnFreeNode:=@TEventsHandler(nil).VTOnFreeNode;
   vt.OnExpanded:=@TEventsHandler(nil).VTOnExpanded;
   vt.OnCompareNodes:=@TEventsHandler(nil).VTOnCompareNodes;
+  vt.OnBeforeCellPaint:=@TEventsHandler(nil).VTOnBeforeCellPaint;
   vt.OnDrawText:=@TEventsHandler(nil).VTOnDrawText;
   f.Show;
 
