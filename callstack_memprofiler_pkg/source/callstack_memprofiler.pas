@@ -13,6 +13,7 @@ uses
 
 procedure dumptofile;
 procedure ReplaceMemoryManager;
+function IsMemoryManagerReplaced: Boolean;
 procedure RestoreMemoryManager;
 procedure ResetData;
 
@@ -286,6 +287,15 @@ begin
     SetMemoryManager(NewMM);
   end;
 end;
+
+function IsMemoryManagerReplaced: Boolean;
+var
+  MM: TMemoryManager;
+begin
+  GetMemoryManager(MM);
+  Result:=MM.AllocMem=@NewAllocMem;
+end;
+
 procedure RestoreMemoryManager;
 var
   MM: TMemoryManager;
@@ -510,6 +520,7 @@ var
     pvn: PVirtualNode;
   end;
   pstack_arr: PCodePointerArray;
+  MemoryManagerWasReplaced: Boolean;
 
   procedure push(const val:PCodePointerArray; const pvn: PVirtualNode);inline;
   begin
@@ -526,7 +537,9 @@ var
   end;
 
 begin
-  SetMemoryManager(OldMM);
+  MemoryManagerWasReplaced:=IsMemoryManagerReplaced;
+
+  if MemoryManagerWasReplaced then SetMemoryManager(OldMM);
 
   need_free_form:=True;
   f:=TForm.Create(nil);
@@ -610,7 +623,7 @@ begin
   vt.EndUpdate;
   vt.Header.AutoFitColumns(False);
 
-  SetMemoryManager(NewMM);
+  if MemoryManagerWasReplaced then SetMemoryManager(NewMM);
 end;
 
 procedure ExitProc;
