@@ -433,7 +433,7 @@ end;
 procedure TEventsHandler.VTOnExpanded(Sender: TBaseVirtualTree; Node: PVirtualNode);
 begin
   if (Node^.ChildCount=1) and (([vsToggling,vsExpanded] * Node^.FirstChild^.States)=[]) then Sender.ToggleNode(Node^.FirstChild);
-  TLazVirtualStringTree(Sender).Header.AutoFitColumns(False);
+  //TLazVirtualStringTree(Sender).Header.AutoFitColumns(False);
 end;
 
 procedure TEventsHandler.VTOnBeforeCellPaint(Sender: TBaseVirtualTree;
