@@ -9,7 +9,8 @@ uses
   Generics.Collections,
   laz.VirtualTrees, callstack_memprofiler_common,
   FpDbgLoader, FpDbgDwarf, FpDbgInfo, FpDbgDwarfDataClasses, FpdMemoryTools, DbgIntfBaseTypes,
-  ZStream;
+  ZStream,
+  LazVersion;
 
 type
   TAddrNameDict = specialize TDictionary<Pointer, String>;
@@ -38,7 +39,9 @@ type
       Column: TColumnIndex; TextType: TVSTTextType; var CellText: String);
   private
     ImageLoaderList: TDbgImageLoaderList;
+{$IF (laz_major=3) AND (laz_minor=99)}
     MemModel: TFpDbgMemModel;
+{$ENDIF}
     DwarfInfo: TFpDwarfInfo;
     MemProfilerData: PByte;
     AddrNameDict: TAddrNameDict;
@@ -116,7 +119,9 @@ begin
 
   AddrNameDict:=TAddrNameDict.Create;
   DwarfInfo:=nil;
+{$IF (laz_major=3) AND (laz_minor=99)}
   MemModel:=nil;
+{$ENDIF}
 end;
 
 procedure TMainForm.FormDropFiles(Sender: TObject; const FileNames: array of string);
@@ -228,14 +233,22 @@ begin
   ImageLoaderList := TDbgImageLoaderList.Create(True);
   TDbgImageLoader.Create(filename).AddToLoaderList(ImageLoaderList);
 
+{$IF (laz_major=3) AND (laz_minor=99)}
   MemModel := TFpDbgMemModel.Create;
   DwarfInfo := TFpDwarfInfo.Create(ImageLoaderList, nil, MemModel);
+{$ELSE}
+  DwarfInfo := TFpDwarfInfo.Create(ImageLoaderList, nil);
+{$ENDIF}
+
+
   DwarfInfo.LoadCompilationUnits;
 end;
 
 procedure TMainForm.CloseDWARF;
 begin
+{$IF (laz_major=3) AND (laz_minor=99)}
   MemModel.Free;
+{$ENDIF}
   DwarfInfo.Free;
   DwarfInfo:=nil;
   ImageLoaderList.Free;
@@ -319,7 +332,7 @@ var
 begin
   fs :=  TFileStream.Create(filename, fmOpenRead);
   fds := TDecompressionStream.Create(fs);
-  fs.ReadData(data_size);//, SizeOf(data_size));
+  fs.Read(data_size, SizeOf(data_size));
   Getmem(MemProfilerData, data_size);
 
   if data_size=fds.Read(MemProfilerData^, High(LongInt)) then

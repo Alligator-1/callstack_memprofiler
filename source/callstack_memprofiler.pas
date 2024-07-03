@@ -271,12 +271,12 @@ var
   procedure write_header; inline;
   begin
     ms.Seek(0, soBeginning);
-    ms.WriteData(data_size);
+    ms.Write(data_size, SizeOf(data_size));
     ms.Seek(0, soEnd);
   end;
   procedure write_node_count(const count: integer); inline;
   begin
-    cs.WriteData(count);
+    cs.Write(count, SizeOf(count));
     inc(data_size, SizeOf(count));
   end;
   procedure write_node(const data: TInfo); inline;
