@@ -9,8 +9,8 @@ uses
   Generics.Collections,
   laz.VirtualTrees, callstack_memprofiler_common,
   FpDbgLoader, FpDbgDwarf, FpDbgInfo, FpDbgDwarfDataClasses, FpdMemoryTools, DbgIntfBaseTypes,
-  ZStream,
-  LazVersion;
+  ZStream
+  ;
 
 type
   TAddrNameDict = specialize TDictionary<Pointer, String>;
@@ -39,7 +39,7 @@ type
       Column: TColumnIndex; TextType: TVSTTextType; var CellText: String);
   private
     ImageLoaderList: TDbgImageLoaderList;
-{$IF (laz_major=3) AND (laz_minor=99)}
+{$IF DECLARED(TFpDbgMemModel)}
     MemModel: TFpDbgMemModel;
 {$ENDIF}
     DwarfInfo: TFpDwarfInfo;
@@ -119,7 +119,7 @@ begin
 
   AddrNameDict:=TAddrNameDict.Create;
   DwarfInfo:=nil;
-{$IF (laz_major=3) AND (laz_minor=99)}
+{$IF DECLARED(TFpDbgMemModel)}
   MemModel:=nil;
 {$ENDIF}
 end;
@@ -233,7 +233,7 @@ begin
   ImageLoaderList := TDbgImageLoaderList.Create(True);
   TDbgImageLoader.Create(filename).AddToLoaderList(ImageLoaderList);
 
-{$IF (laz_major=3) AND (laz_minor=99)}
+{$IF DECLARED(TFpDbgMemModel)}
   MemModel := TFpDbgMemModel.Create;
   DwarfInfo := TFpDwarfInfo.Create(ImageLoaderList, nil, MemModel);
 {$ELSE}
@@ -246,7 +246,7 @@ end;
 
 procedure TMainForm.CloseDWARF;
 begin
-{$IF (laz_major=3) AND (laz_minor=99)}
+{$IF DECLARED(TFpDbgMemModel)}
   MemModel.Free;
 {$ENDIF}
   DwarfInfo.Free;
