@@ -1,0 +1,56 @@
+object MainForm: TMainForm
+  Left = 460
+  Height = 300
+  Top = 240
+  Width = 500
+  AllowDropFiles = True
+  Caption = 'Callstack memory profiler viewer'
+  ClientHeight = 300
+  ClientWidth = 500
+  LCLVersion = '3.99.0.0'
+  OnClose = FormClose
+  OnCreate = FormCreate
+  OnDropFiles = FormDropFiles
+  object vt: TLazVirtualStringTree
+    Left = 0
+    Height = 268
+    Top = 32
+    Width = 500
+    Anchors = [akTop, akLeft, akRight, akBottom]
+    DefaultText = 'Node'
+    Header.AutoSizeIndex = -1
+    Header.Columns = <>
+    Header.Height = 50
+    Header.MainColumn = -1
+    Header.MinHeight = 50
+    TabOrder = 0
+    TreeOptions.SelectionOptions = [toFullRowSelect]
+    OnBeforeCellPaint = vtBeforeCellPaint
+    OnCompareNodes = vtCompareNodes
+    OnDrawText = vtDrawText
+    OnExpanded = vtExpanded
+    OnFreeNode = vtFreeNode
+    OnGetText = vtGetText
+  end
+  object btnLoadMemprofile: TButton
+    Left = 0
+    Height = 25
+    Top = 0
+    Width = 250
+    Caption = '1. Open memprofile or drop file on me...'
+    TabOrder = 1
+    OnClick = btnLoadMemprofileClick
+  end
+  object btnLoadExecutable: TButton
+    Left = 250
+    Height = 25
+    Top = 0
+    Width = 250
+    Caption = '2. load executable image'
+    TabOrder = 2
+    OnClick = btnLoadExecutableClick
+  end
+  object OpenDialog: TOpenDialog
+    Left = 16
+  end
+end
