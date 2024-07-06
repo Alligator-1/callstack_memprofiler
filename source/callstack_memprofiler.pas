@@ -1,10 +1,25 @@
 unit callstack_memprofiler;
 {$mode objfpc}{$H+}
 
+{$DEFINE USE_COMPRESSION}
+//{$DEFINE USE_ZSTD}
+
+{$IFNDEF Windows}
+  {$UNDEFINE USE_ZSTD}
+{$ENDIF}
+
 interface
 
 uses
-  SysUtils, Generics.Collections, Classes, ZStream, callstack_memprofiler_common;
+  SysUtils, Generics.Collections, Classes, callstack_memprofiler_common
+{$IFDEF USE_COMPRESSION}
+  {$IFDEF USE_ZSTD}
+    ,ZSTD
+  {$ELSE}
+    ,ZStream
+  {$ENDIF}
+{$ENDIF}
+  ;
 
 procedure SaveProfileToFile(filename: string = '');
 procedure ReplaceMemoryManager;
@@ -248,23 +263,39 @@ end;
 
 procedure SaveProfileToFile(filename: string = '');
 var
-  i,ii: Integer;
-  stack_index: integer = -1;
-  stack: array of PCodePointerArray;
+  i, ii: Integer;
+  stack_index: LongInt = -1;
+  stack: array of record
+    arr: PCodePointerArray;
+    index: LongInt;
+  end;
+  index_arr_size: LongInt = -1;
+  index_arr: array of UInt64;
+
+  group_index, group_index_counter: LongInt;
   pstack_arr: PCodePointerArray;
+  has_children: Boolean;
   MemoryManagerWasReplaced: Boolean;
   data_size: LongInt = 0;
   ms,cs: TStream;
 
-  procedure push(const val: PCodePointerArray); inline;
+  procedure push_index_value(const index: LongInt; const value: UInt64); inline;
   begin
-    if stack_index<Length(stack) then SetLength(stack, Length(stack)+10);
-    inc(stack_index);
-    stack[stack_index]:=val;
+    if index>=Length(index_arr) then SetLength(index_arr, index+1000);
+    if index>=index_arr_size then index_arr_size:=index+1;
+    index_arr[index]:=value;
   end;
-  function pop: PCodePointerArray; inline;
+  procedure push(const val: PCodePointerArray; const index: LongInt); inline;
   begin
-    Result:=stack[stack_index];
+    inc(stack_index);
+    if stack_index=Length(stack) then SetLength(stack, Length(stack)+100);
+    stack[stack_index].arr:=val;
+    stack[stack_index].index:=index;
+  end;
+  procedure pop(out arr: PCodePointerArray; out index: LongInt); inline;
+  begin
+    arr:=stack[stack_index].arr;
+    index:=stack[stack_index].index;
     dec(stack_index);
   end;
 
@@ -272,19 +303,33 @@ var
   begin
     ms.Seek(0, soBeginning);
     ms.Write(data_size, SizeOf(data_size));
+    ms.Write(index_arr_size, SizeOf(index_arr_size));
     ms.Seek(0, soEnd);
+  end;
+  procedure write_nodes_index; inline;
+  begin
+    cs.Write(index_arr[0], SizeOf(index_arr[0])*index_arr_size);
   end;
   procedure write_node_count(const count: integer); inline;
   begin
     cs.Write(count, SizeOf(count));
     inc(data_size, SizeOf(count));
   end;
+  procedure write_node_group_index(const index: LongInt); inline;
+  begin
+    cs.Write(index, SizeOf(index));
+    inc(data_size, SizeOf(index));
+  end;
+  procedure write_node_has_children(const has_children: Boolean); inline;
+  begin
+    cs.Write(has_children, SizeOf(has_children));
+    inc(data_size, SizeOf(has_children));
+  end;
   procedure write_node(const data: TInfo); inline;
   begin
     cs.Write(data, SizeOf(TInfo));
     inc(data_size, SizeOf(TInfo));
   end;
-
 begin
   i:=sizeof(TInfo);
 
@@ -294,28 +339,50 @@ begin
 
   if filename='' then filename:=FormatDateTime('yyyymmddHHMMSS', Now)+'.memprof';
   ms := TMemoryStream.Create;
+
+{$IFDEF USE_COMPRESSION}
+  {$IFDEF USE_ZSTD}
+  cs := TZSTDCompressStream.Create(ms,1,0);
+  {$ELSE}
   cs := TCompressionStream.Create(clfastest, ms);
+  {$ENDIF}
+{$ELSE}
+  cs:=ms;
+{$ENDIF}
+
+  group_index_counter:=0;
 
   write_header;
   for i:=Low(root_stack) to High(root_stack) do
   begin
-    push(@root_stack[i].stack_tree);
+    push(@root_stack[i].stack_tree, group_index_counter);
 
     while stack_index>=0 do
     begin
-      pstack_arr:=pop;
+      pop(pstack_arr, group_index);
 
+      push_index_value(group_index, data_size);
+      write_node_group_index(group_index);
       write_node_count(Length(pstack_arr^));
       for ii:=Low(pstack_arr^) to High(pstack_arr^) do
       begin
         write_node(pstack_arr^[ii].data);
-        push(@pstack_arr^[ii].next);
+        has_children:=Length(pstack_arr^[ii].next)>0;
+        write_node_has_children(has_children);
+
+        inc(group_index_counter);
+        write_node_group_index(group_index_counter);
+        push(@pstack_arr^[ii].next, group_index_counter);
       end;
     end;
   end;
+  write_nodes_index;
+
   write_header;
 
+{$IFDEF USE_COMPRESSION}
   cs.Free;
+{$ENDIF}
   TMemoryStream(ms).SaveToFile(filename);
   ms.Free;
 

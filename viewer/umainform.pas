@@ -1,6 +1,12 @@
 unit umainform;
-
 {$mode objfpc}{$H+}
+
+{$DEFINE USE_COMPRESSION}
+{$DEFINE USE_ZSTD}
+
+{$IFNDEF Windows}
+  {$UNDEFINE USE_ZSTD}
+{$ENDIF}
 
 interface
 
@@ -8,8 +14,14 @@ uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
   Generics.Collections,
   laz.VirtualTrees, callstack_memprofiler_common,
-  FpDbgLoader, FpDbgDwarf, FpDbgInfo, FpDbgDwarfDataClasses, FpdMemoryTools, DbgIntfBaseTypes,
-  ZStream
+  FpDbgLoader, FpDbgDwarf, FpDbgInfo, FpDbgDwarfDataClasses, FpdMemoryTools, DbgIntfBaseTypes
+{$IFDEF USE_COMPRESSION}
+  {$IFDEF USE_ZSTD}
+    ,ZSTD
+  {$ELSE}
+    ,ZStream
+  {$ENDIF}
+{$ENDIF}
   ;
 
 type
@@ -34,7 +46,8 @@ type
       Node: PVirtualNode; Column: TColumnIndex; const CellText: String;
       const CellRect: TRect; var DefaultDraw: Boolean);
     procedure vtExpanded(Sender: TBaseVirtualTree; Node: PVirtualNode);
-    procedure vtFreeNode(Sender: TBaseVirtualTree; Node: PVirtualNode);
+    procedure vtExpanding(Sender: TBaseVirtualTree; Node: PVirtualNode;
+      var Allowed: Boolean);
     procedure vtGetText(Sender: TBaseVirtualTree; Node: PVirtualNode;
       Column: TColumnIndex; TextType: TVSTTextType; var CellText: String);
   private
@@ -43,9 +56,13 @@ type
     MemModel: TFpDbgMemModel;
 {$ENDIF}
     DwarfInfo: TFpDwarfInfo;
-    MemProfilerData: PByte;
     AddrNameDict: TAddrNameDict;
+    MemProfilerData: PByte;
+    node_index_arr: PUInt64;
+    node_index_arr_size: LongInt;
+    data_pos:  UInt64;
   public
+    procedure LoadNode(const node: PVirtualNode);
     procedure LoadMemProfile(filename: string);
     procedure UnLoadMemProfile;
     procedure OpenDWARF(filename: string);
@@ -84,26 +101,32 @@ procedure TMainForm.FormCreate(Sender: TObject);
 var
   i: Integer;
 begin
-  vt.NodeDataSize:=SizeOf(PInfo);
+  vt.NodeDataSize:=SizeOf(PInfo)    // data
+                  +SizeOf(Pointer)  // index (пусть будет Pointer пока-что)
+                  +SizeOf(Pointer)  // флаг loaded (пусть будет Pointer пока-что)
+                  ;
   vt.TreeOptions.SelectionOptions:=vt.TreeOptions.SelectionOptions+[toFullRowSelect];
   vt.Header.MinHeight:=50;
-  vt.Header.Columns.Add.Text:='addr';              // 0
-  vt.Header.Columns.Add.Text:='count';             // 1
-  vt.Header.Columns.Add.Text:='mem size';          // 2
-  vt.Header.Columns.Add.Text:='real size';         // 3
+  with vt.Header.Columns do
+  begin
+    Add.Text:='addr';              // 0
+    Add.Text:='count';             // 1
+    Add.Text:='mem size';          // 2
+    Add.Text:='real size';         // 3
 
-  vt.Header.Columns.Add.Text:='count alloc';       // 4
-  vt.Header.Columns.Add.Text:='mem sum alloc';     // 5
-  vt.Header.Columns.Add.Text:='max block alloc';   // 6
-  vt.Header.Columns.Add.Text:='min block alloc';   // 7
-  vt.Header.Columns.Add.Text:='avg block alloc';   // 8
+    Add.Text:='count alloc';       // 4
+    Add.Text:='mem sum alloc';     // 5
+    Add.Text:='max block alloc';   // 6
+    Add.Text:='min block alloc';   // 7
+    Add.Text:='avg block alloc';   // 8
 
-  vt.Header.Columns.Add.Text:='count free';        // 9
-  vt.Header.Columns.Add.Text:='mem sum free';      // 10
-  vt.Header.Columns.Add.Text:='max block free';    // 11
-  vt.Header.Columns.Add.Text:='min block free';    // 12
-  vt.Header.Columns.Add.Text:='avg block free';    // 13
-  vt.Header.Columns.Add.Text:='name';              // 14
+    Add.Text:='count free';        // 9
+    Add.Text:='mem sum free';      // 10
+    Add.Text:='max block free';    // 11
+    Add.Text:='min block free';    // 12
+    Add.Text:='avg block free';    // 13
+    Add.Text:='name';              // 14
+  end;
   for i:=0 to vt.Header.Columns.Count-1 do
   begin
     vt.Header.Columns.Items[i].Options:=vt.Header.Columns.Items[i].Options+[coWrapCaption];
@@ -122,6 +145,8 @@ begin
 {$IF DECLARED(TFpDbgMemModel)}
   MemModel:=nil;
 {$ENDIF}
+  MemProfilerData:=nil;
+  node_index_arr:=nil;
 end;
 
 procedure TMainForm.FormDropFiles(Sender: TObject; const FileNames: array of string);
@@ -187,15 +212,49 @@ begin
   TargetCanvas.Font.Color:=clBlack;
 end;
 
+function get_group_index: LongInt; inline;
+begin
+  Result:=PLongInt(@MainForm.MemProfilerData[MainForm.data_pos])^;
+  inc(MainForm.data_pos, SizeOf(Result));
+end;
+function get_node_count: LongInt; inline;
+begin
+  Result:=PLongInt(@MainForm.MemProfilerData[MainForm.data_pos])^;
+  inc(MainForm.data_pos, SizeOf(Result));
+end;
+function get_node_has_children: Boolean; inline;
+begin
+  Result:=PBoolean(@MainForm.MemProfilerData[MainForm.data_pos])^;
+  inc(MainForm.data_pos, SizeOf(Result));
+end;
+function get_node: PInfo; inline;
+begin
+  Result:=PInfo(@MainForm.MemProfilerData[MainForm.data_pos]);
+  inc(MainForm.data_pos, SizeOf(TInfo));
+end;
+
 procedure TMainForm.vtExpanded(Sender: TBaseVirtualTree; Node: PVirtualNode);
 begin
   if (Node^.ChildCount=1) and (([vsToggling,vsExpanded] * Node^.FirstChild^.States)=[]) then Sender.ToggleNode(Node^.FirstChild);
-  //TLazVirtualStringTree(Sender).Header.AutoFitColumns(False);
+
+  //TLazVirtualStringTree(Sender).Header.AutoFitColumns(False); // need timeout
 end;
 
-procedure TMainForm.vtFreeNode(Sender: TBaseVirtualTree; Node: PVirtualNode);
+procedure TMainForm.vtExpanding(Sender: TBaseVirtualTree; Node: PVirtualNode; var Allowed: Boolean);
+  function GetChildCount: LongInt;
+  var
+    group_index: LongInt;
+  begin
+    group_index:=LongInt(PPointer(vt.GetNodeData(Node))[1]);
+    data_pos:=node_index_arr[group_index];
+
+    //Assert(group_index=get_group_index);
+    get_group_index;
+
+    Result := get_node_count;
+  end;
 begin
-  //Dispose(PNodeData(PPointer(Sender.GetNodeData(Node))^));
+  if (Node^.FirstChild=nil) and (GetChildCount<>0) then LoadNode(Node);
 end;
 
 procedure TMainForm.vtGetText(Sender: TBaseVirtualTree; Node: PVirtualNode; Column: TColumnIndex; TextType: TVSTTextType; var CellText: String);
@@ -228,8 +287,41 @@ begin
   end;
 end;
 
+procedure TMainForm.LoadNode(const node: PVirtualNode);
+var
+  i: Integer;
+  new_node: PVirtualNode;
+  group_index: LongInt;
+begin
+  if (PPointer(vt.GetNodeData(node))[2]=nil) then
+  begin
+    vt.BeginUpdate;
+
+    group_index:=LongInt(PPointer(vt.GetNodeData(node))[1]);
+    data_pos:=node_index_arr[group_index];
+
+    //Assert(group_index=get_group_index);
+    get_group_index;
+
+    for i:=get_node_count-1 downto 0 do
+    begin
+      new_node:=vt.AddChild(node, get_node);
+      vt.HasChildren[new_node]:=get_node_has_children;
+
+      PPointer(vt.GetNodeData(new_node))[1]:=Pointer(get_group_index);
+      PPointer(vt.GetNodeData(new_node))[2]:=nil; // на самом деле это булевый флаг 1 - ноды созданы, 0 - не созданы
+    end;
+
+    PPointer(vt.GetNodeData(node))[2]:=Pointer(1);
+
+    vt.EndUpdate;
+  end;
+end;
+
 procedure TMainForm.OpenDWARF(filename: string);
 begin
+  CloseDWARF;
+
   ImageLoaderList := TDbgImageLoaderList.Create(True);
   TDbgImageLoader.Create(filename).AddToLoaderList(ImageLoaderList);
 
@@ -248,10 +340,12 @@ procedure TMainForm.CloseDWARF;
 begin
 {$IF DECLARED(TFpDbgMemModel)}
   MemModel.Free;
+  MemModel:=nil;
 {$ENDIF}
   DwarfInfo.Free;
   DwarfInfo:=nil;
   ImageLoaderList.Free;
+  ImageLoaderList:=nil;
 end;
 
 function TMainForm.GetDWARFInfoByAddress(addr: Pointer): string;
@@ -295,62 +389,48 @@ end;
 
 procedure TMainForm.LoadMemProfile(filename: string);
 var
-  i,ii: Integer;
-  stack_index: integer = -1;
-  stack: array of PVirtualNode;
-  curr_node: PVirtualNode;
+  i: Integer;
+  node: PVirtualNode;
 
-  fs, fds: TStream;
+  fs, ds: TStream;
   data_size: LongInt;
-  data_pos:  LongInt = 0;
-  node_count: LongInt;
-  nod: PInfo;
-
-  procedure push(const pvn: PVirtualNode); inline;
-  begin
-    if stack_index<Length(stack) then SetLength(stack, Length(stack)+10);
-    inc(stack_index);
-    stack[stack_index]:=pvn;
-  end;
-  function pop: PVirtualNode; inline;
-  begin
-    Result:=stack[stack_index];
-    dec(stack_index);
-  end;
-
-  function get_node_count: LongInt; inline;
-  begin
-    Result:=PLongInt(@MemProfilerData[data_pos])^;
-    inc(data_pos, SizeOf(Result));
-  end;
-  function get_node: PInfo; inline;
-  begin
-    Result:=PInfo(@MemProfilerData[data_pos]);
-    inc(data_pos, SizeOf(TInfo));
-  end;
-
 begin
-  fs :=  TFileStream.Create(filename, fmOpenRead);
-  fds := TDecompressionStream.Create(fs);
-  fs.Read(data_size, SizeOf(data_size));
-  Getmem(MemProfilerData, data_size);
+  AddrNameDict.Clear;
+  vt.Clear;
 
-  if data_size=fds.Read(MemProfilerData^, High(LongInt)) then
+  fs :=  TFileStream.Create(filename, fmOpenRead);
+
+{$IFDEF USE_COMPRESSION}
+  {$IFDEF USE_ZSTD}
+  ds := TZSTDDecompressStream.Create(fs);
+  {$ELSE}
+  ds := TDecompressionStream.Create(fs);
+  {$ENDIF}
+{$ELSE}
+  ds:=fs;
+{$ENDIF}
+
+  fs.Read(data_size, SizeOf(data_size));
+  fs.Read(node_index_arr_size, SizeOf(node_index_arr_size));
+  UnLoadMemProfile;
+  Getmem(MemProfilerData, data_size);
+  Getmem(node_index_arr, node_index_arr_size*SizeOf(node_index_arr[0]));
+  data_pos := 0;
+
+  if (data_size=ds.Read(MemProfilerData^, data_size)) and
+     ((node_index_arr_size*SizeOf(node_index_arr[0])=ds.Read(node_index_arr^, node_index_arr_size*SizeOf(node_index_arr[0])))) then
   begin
     vt.BeginUpdate;
 
-    push(nil);
+    get_group_index;
 
-    while data_pos<data_size do
+    for i:=get_node_count-1 downto 0 do
     begin
-      curr_node:=pop;
-      node_count:=get_node_count;
-      for i:=node_count-1 downto 0 do
-      begin
-        nod:=get_node;
-        push(vt.AddChild(curr_node, nod));
+      node:=vt.AddChild(nil, get_node);
+      vt.HasChildren[node]:=get_node_has_children;
 
-      end;
+      PPointer(vt.GetNodeData(node))[1]:=Pointer(get_group_index);
+      PPointer(vt.GetNodeData(node))[2]:=Pointer(0); // на самом деле это булевый флаг 1 - ноды созданы, 0 - не созданы
     end;
 
     vt.EndUpdate;
@@ -362,13 +442,24 @@ begin
     ShowMessage('Something wrong');
   end;
 
-  fds.Free;
+{$IFDEF USE_COMPRESSION}
+  ds.Free;
+{$ENDIF}
   fs.Free;
 end;
 
 procedure TMainForm.UnLoadMemProfile;
 begin
-  Freemem(MemProfilerData);
+  if Assigned(MemProfilerData) then
+  begin
+    Freemem(MemProfilerData);
+    MemProfilerData:=nil;
+  end;
+  if Assigned(node_index_arr) then
+  begin
+    Freemem(node_index_arr);
+    node_index_arr:=nil;
+  end;
 end;
 
 end.

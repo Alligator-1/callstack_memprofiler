@@ -29,7 +29,7 @@ object MainForm: TMainForm
     OnCompareNodes = vtCompareNodes
     OnDrawText = vtDrawText
     OnExpanded = vtExpanded
-    OnFreeNode = vtFreeNode
+    OnExpanding = vtExpanding
     OnGetText = vtGetText
   end
   object btnLoadMemprofile: TButton
