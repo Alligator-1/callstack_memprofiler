@@ -1,27 +1,14 @@
 unit umainform;
 {$mode objfpc}{$H+}
 
-{$DEFINE USE_COMPRESSION}
-{$DEFINE USE_ZSTD}
-
-{$IFNDEF Windows}
-  {$UNDEFINE USE_ZSTD}
-{$ENDIF}
-
 interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
   Generics.Collections,
   laz.VirtualTrees, callstack_memprofiler_common,
-  FpDbgLoader, FpDbgDwarf, FpDbgInfo, FpDbgDwarfDataClasses, FpdMemoryTools, DbgIntfBaseTypes
-{$IFDEF USE_COMPRESSION}
-  {$IFDEF USE_ZSTD}
-    ,ZSTD
-  {$ELSE}
-    ,ZStream
-  {$ENDIF}
-{$ENDIF}
+  FpDbgLoader, FpDbgDwarf, FpDbgInfo, FpDbgDwarfDataClasses, FpdMemoryTools, DbgIntfBaseTypes,
+  ZStream
   ;
 
 type
@@ -399,16 +386,7 @@ begin
   vt.Clear;
 
   fs :=  TFileStream.Create(filename, fmOpenRead);
-
-{$IFDEF USE_COMPRESSION}
-  {$IFDEF USE_ZSTD}
-  ds := TZSTDDecompressStream.Create(fs);
-  {$ELSE}
   ds := TDecompressionStream.Create(fs);
-  {$ENDIF}
-{$ELSE}
-  ds:=fs;
-{$ENDIF}
 
   fs.Read(data_size, SizeOf(data_size));
   fs.Read(node_index_arr_size, SizeOf(node_index_arr_size));
@@ -442,9 +420,7 @@ begin
     ShowMessage('Something wrong');
   end;
 
-{$IFDEF USE_COMPRESSION}
   ds.Free;
-{$ENDIF}
   fs.Free;
 end;
 

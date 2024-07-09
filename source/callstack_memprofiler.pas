@@ -1,25 +1,10 @@
 unit callstack_memprofiler;
 {$mode objfpc}{$H+}
 
-{$DEFINE USE_COMPRESSION}
-//{$DEFINE USE_ZSTD}
-
-{$IFNDEF Windows}
-  {$UNDEFINE USE_ZSTD}
-{$ENDIF}
-
 interface
 
 uses
-  SysUtils, Generics.Collections, Classes, callstack_memprofiler_common
-{$IFDEF USE_COMPRESSION}
-  {$IFDEF USE_ZSTD}
-    ,ZSTD
-  {$ELSE}
-    ,ZStream
-  {$ENDIF}
-{$ENDIF}
-  ;
+  SysUtils, Generics.Collections, Classes, callstack_memprofiler_common, ZStream;
 
 procedure SaveProfileToFile(filename: string = '');
 procedure ReplaceMemoryManager;
@@ -281,7 +266,7 @@ var
 
   procedure push_index_value(const index: LongInt; const value: UInt64); inline;
   begin
-    if index>=Length(index_arr) then SetLength(index_arr, index+1000);
+    if index>=Length(index_arr) then SetLength(index_arr, index+10000);
     if index>=index_arr_size then index_arr_size:=index+1;
     index_arr[index]:=value;
   end;
@@ -339,16 +324,7 @@ begin
 
   if filename='' then filename:=FormatDateTime('yyyymmddHHMMSS', Now)+'.memprof';
   ms := TMemoryStream.Create;
-
-{$IFDEF USE_COMPRESSION}
-  {$IFDEF USE_ZSTD}
-  cs := TZSTDCompressStream.Create(ms,1,0);
-  {$ELSE}
   cs := TCompressionStream.Create(clfastest, ms);
-  {$ENDIF}
-{$ELSE}
-  cs:=ms;
-{$ENDIF}
 
   group_index_counter:=0;
 
@@ -380,9 +356,7 @@ begin
 
   write_header;
 
-{$IFDEF USE_COMPRESSION}
   cs.Free;
-{$ENDIF}
   TMemoryStream(ms).SaveToFile(filename);
   ms.Free;
 

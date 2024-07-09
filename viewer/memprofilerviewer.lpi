@@ -57,8 +57,7 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <Libraries Value="..\ZSTD.pas\zstd_static_lib"/>
-      <OtherUnitFiles Value="..\source;..\ZSTD.pas;..\ZSTD.pas\mylibc"/>
+      <OtherUnitFiles Value="..\source"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Parsing>
@@ -78,6 +77,7 @@
     <Linking>
       <Debugging>
         <DebugInfoType Value="dsDwarf3"/>
+        <UseHeaptrc Value="True"/>
       </Debugging>
       <Options>
         <Win32>
