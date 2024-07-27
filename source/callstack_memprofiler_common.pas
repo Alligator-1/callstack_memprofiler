@@ -17,7 +17,8 @@ type
     min_block_free: Cardinal;
     count_alloc,
     count_free: Cardinal;
-    procedure update(const args: array of const); inline;
+    procedure init(addr: CodePointer); inline;
+    procedure update(mem_size: SizeInt); inline;
     function avg_alloc_block_size: SizeInt; inline;
     function avg_free_block_size: SizeInt; inline;
     function count: Cardinal; inline;
@@ -26,27 +27,30 @@ type
 
 implementation
 
-procedure TInfo.update(const args: array of const);
-var
-  size: SizeInt;
+procedure TInfo.init(addr: CodePointer);
 begin
-  size:=args[0].VInt64^;
+  code_addr:=addr;
+  min_block_alloc:=High(min_block_alloc);
+  min_block_free:=High(min_block_free);
+end;
 
-  if size>0 then
+procedure TInfo.update(mem_size: SizeInt);
+begin
+  if mem_size>0 then
   begin
     inc(count_alloc);
-    inc(mem_sum_alloc, size);
+    inc(mem_sum_alloc, mem_size);
 
-    if size>max_block_alloc then max_block_alloc:=size;
-    if size<min_block_alloc then min_block_alloc:=size;
+    if mem_size>max_block_alloc then max_block_alloc:=mem_size;
+    if mem_size<min_block_alloc then min_block_alloc:=mem_size;
   end
-  else if size<0 then
+  else if mem_size<0 then
   begin
     inc(count_free);
-    inc(mem_sum_free, -size);
+    inc(mem_sum_free, -mem_size);
 
-    if -size>max_block_free then max_block_free:=-size;
-    if -size<min_block_free then min_block_free:=-size;
+    if -mem_size>max_block_free then max_block_free:=-mem_size;
+    if -mem_size<min_block_free then min_block_free:=-mem_size;
   end else
   begin
     // не знаю надо инкрементить или не надо, пока не решил

@@ -1,5 +1,6 @@
 unit callstack_memprofiler;
 {$mode objfpc}{$H+}
+{$modeswitch advancedrecords}
 
 interface
 
@@ -17,17 +18,22 @@ implementation
 type
   {TODO: отслеживать как-то AllocMem и GetMem отдельно}
 
-  PCodePointer = ^TCodePointer;
-  TCodePointer = record
-    next: array of TCodePointer;
-    data: TInfo;
+  generic TNode<T> = record
+  type
+    PNode = ^TNode;
+  public
+    node_data: T;
+    child_nodes: array of TNode;
+    function add_child_node: PNode; inline;
   end;
-  PCodePointerArray = ^TCodePointerArray;
-  TCodePointerArray = array of TCodePointer;
-  TStackTreeArray = array of record
-    name: String;
-    stack_tree: TCodePointerArray;
+  // сохранение тоже выделить в TNode, и возможно загрузку тоже и вынести в отдельный юнит
+
+  PMemProfilerNode = ^TMemProfilerNode;
+  TMemProfilerNode = specialize TNode<TInfo>;
+  HMemProfilerNodeHelper = record helper for TMemprofilerNode
+    function find_child_node(addr: CodePointer): PMemProfilerNode;// inline; // bug in FPC #40865
   end;
+
 
   TMemUsageMonitor = class(specialize TDictionary<Pointer, SizeInt>)
     function AddPtr(p:pointer; Size:SizeInt):SizeInt; inline;
@@ -40,64 +46,89 @@ const
   skip_memusage_bottom_frames = 2;
 
 var
-  root_stack: TStackTreeArray;
+  root_node: TMemProfilerNode;
   mem_monitor: TMemUsageMonitor;
   NewMM, OldMM: TMemoryManager;
 
-procedure collect_callstack(const name: String; const args: array of const; skip_frames: integer = 2; skip_bottom_frames: integer=0);
+function TNode.add_child_node: PNode;
+begin
+  SetLength(child_nodes, length(child_nodes)+1);
+  Result:=@child_nodes[high(child_nodes)];
+end;
+
+function HMemProfilerNodeHelper.find_child_node(addr: CodePointer): PMemProfilerNode;
+var
+  i: longint;
+begin
+  for i:=low(child_nodes) to high(child_nodes) do
+    if child_nodes[i].node_data.code_addr=addr then Exit(@child_nodes[i]);
+  Result:=nil
+end;
+
+procedure collect_callstack(mem_size: SizeInt; skip_frames: integer = 2; skip_bottom_frames: integer=0);
 var
   frames: array [0..255] of codepointer;
-  list: PCodePointerArray;
-  pcp: PCodePointer;
-  root: ^TStackTreeArray;
-  i, i2, count: longint;
-  found: boolean;
+  node, found_node: PMemProfilerNode;
+  i, count: longint;
 begin
   count:=CaptureBacktrace(skip_frames,255,@frames[0]);
 
-  found:=false;
-  root := @root_stack;
-  for i:=high(root^) downto low(root^) do
-  begin
-    found := root^[i].name = name;
-    if found then
-    begin
-      list:=@root^[i].stack_tree;
-      Break;
-    end;
-  end;
-  if not found then
-  begin
-    SetLength(root^, Length(root^)+1);
-    root^[high(root^)].name:=name;
-    list:=@root^[high(root^)].stack_tree;
-  end;
+  node:=@root_node;
 
   for i:=count-1-skip_bottom_frames downto 0 do
   begin
-    found:=false;
-    for i2:=low(list^) to high(list^) do
-    begin
-      pcp:=@list^[i2];
-      found := pcp^.data.code_addr=frames[i];
-      if found then Break;
-    end;
-    if not found then
-    begin
-      SetLength(list^, length(list^)+1);
-      pcp:=@list^[high(list^)];
-      pcp^.data.code_addr:=frames[i];
-      pcp^.data.min_block_alloc:=High(pcp^.data.min_block_alloc);
-      pcp^.data.min_block_free:=High(pcp^.data.min_block_free);
-    end;
-    pcp^.data.update(args);
-    list:=@pcp^.next;
+    found_node:=node^.find_child_node(frames[i]);
+
+    if Assigned(found_node) then
+      begin
+        node:=found_node
+      end
+    else
+      begin
+        node:=node^.add_child_node;
+        node^.node_data.init(frames[i]);
+      end;
+
+    node^.node_data.update(mem_size);
   end;
 end;
 
-procedure collect_memusage(mem_size:SizeInt); inline;
+var
+  bad_add_ptr_cnt:integer=0;
+  bad_del_ptr_cnt:integer=0;
+  bad_cng_ptr_cnt:integer=0;
+
+function TMemUsageMonitor.AddPtr(p: pointer; Size: SizeInt): SizeInt;
 begin
-  collect_callstack('MemUsage', [mem_size], skip_memusage_frames, skip_memusage_bottom_frames);
+  if ContainsKey(p) then
+  begin
+    inc(bad_add_ptr_cnt);
+    Exit(0);
+  end;
+  Result:=Size;
+  Add(p, Size);
+end;
+
+function TMemUsageMonitor.DelPtr(p: pointer): SizeInt;
+begin
+  if not ContainsKey(p) then
+  begin
+    inc(bad_del_ptr_cnt);
+    Exit(0);
+  end;
+  Result:=-Items[p];
+  Remove(p);
+end;
+
+function TMemUsageMonitor.ChgPtr(p: pointer; Size: SizeInt): SizeInt;
+begin
+  if not ContainsKey(p) then
+  begin
+    inc(bad_cng_ptr_cnt);
+    Exit(0);
+  end;
+  Result:=Size-Items[p];
+  AddOrSetValue(p, Size);
 end;
 
 function NewGetMem(Size:ptruint):Pointer;
@@ -105,8 +136,7 @@ begin
   Result := OldMM.GetMem(Size);
 
   SetMemoryManager(OldMM);
-  collect_memusage(mem_monitor.AddPtr(Result, Size));
-  //collect_callstack('NewGetMem',[]);
+  collect_callstack(mem_monitor.AddPtr(Result, Size), skip_memusage_frames, skip_memusage_bottom_frames);
   SetMemoryManager(NewMM);
 end;
 function NewFreeMem(p:pointer):ptruint;
@@ -114,8 +144,7 @@ begin
   Result := OldMM.FreeMem(p);
 
   SetMemoryManager(OldMM);
-  collect_memusage(mem_monitor.DelPtr(p));
-  //collect_callstack('NewFreeMem',[]);
+  collect_callstack(mem_monitor.DelPtr(p), skip_memusage_frames, skip_memusage_bottom_frames);
   SetMemoryManager(NewMM);
 end;
 function NewFreeMemSize(p:pointer;Size:ptruint):ptruint;
@@ -123,8 +152,7 @@ begin
   Result := OldMM.FreeMemSize(p,Size);
 
   SetMemoryManager(OldMM);
-  collect_memusage(mem_monitor.DelPtr(p));
-  //collect_callstack('NewFreeMemSize',[]);
+  collect_callstack(mem_monitor.DelPtr(p), skip_memusage_frames, skip_memusage_bottom_frames);
   SetMemoryManager(NewMM);
 end;
 function NewAllocMem(Size:ptruint):pointer;
@@ -132,8 +160,7 @@ begin
   Result := OldMM.AllocMem(size);
 
   SetMemoryManager(OldMM);
-  collect_memusage(mem_monitor.AddPtr(Result, Size));
-  //collect_callstack('NewAllocMem',[]);
+  collect_callstack(mem_monitor.AddPtr(Result, Size), skip_memusage_frames, skip_memusage_bottom_frames);
   SetMemoryManager(NewMM);
 end;
 function NewReAllocMem(var p:pointer;Size:ptruint):pointer;
@@ -146,14 +173,13 @@ begin
   SetMemoryManager(OldMM);
   if old_p<>p then
   begin
-    collect_memusage(mem_monitor.DelPtr(old_p));
-    collect_memusage(mem_monitor.AddPtr(Result, Size));
+    collect_callstack(mem_monitor.DelPtr(old_p), skip_memusage_frames, skip_memusage_bottom_frames);
+    collect_callstack(mem_monitor.AddPtr(Result, Size), skip_memusage_frames, skip_memusage_bottom_frames);
   end
   else begin
-    collect_memusage(mem_monitor.ChgPtr(old_p, Size));
+    collect_callstack(mem_monitor.ChgPtr(old_p, Size), skip_memusage_frames, skip_memusage_bottom_frames);
   end;
 
-  //collect_callstack('NewReallocMem',[]);
   SetMemoryManager(NewMM);
 end;
 
@@ -203,97 +229,51 @@ procedure ResetData;
 begin
   SetMemoryManager(OldMM);
   mem_monitor.Clear;
-  SetLength(root_stack, 0);
+  SetLength(root_node.child_nodes, 0);
   SetMemoryManager(NewMM);
 end;
 
-var
-  bad_add_ptr_cnt:integer=0;
-  bad_del_ptr_cnt:integer=0;
-  bad_cng_ptr_cnt:integer=0;
 
-function TMemUsageMonitor.AddPtr(p: pointer; Size: SizeInt): SizeInt;
-begin
-  if ContainsKey(p) then
-  begin
-    inc(bad_add_ptr_cnt);
-    Exit(0);
+type
+  TNodeIndexStruct = record
+    node: PMemProfilerNode;
+    group_index: LongInt;
+    class function init(const node_:PMemProfilerNode; const group_index_:LongInt): TNodeIndexStruct; static; inline;
   end;
-  Result:=Size;
-  Add(p, Size);
-end;
-
-function TMemUsageMonitor.DelPtr(p: pointer): SizeInt;
+class function TNodeIndexStruct.init(const node_:PMemProfilerNode; const group_index_:LongInt): TNodeIndexStruct;
 begin
-  if not ContainsKey(p) then
-  begin
-    inc(bad_del_ptr_cnt);
-    Exit(0);
-  end;
-  Result:=-Items[p];
-  Remove(p);
+  Result.node:=node_;
+  Result.group_index:=group_index_;
 end;
-
-function TMemUsageMonitor.ChgPtr(p: pointer; Size: SizeInt): SizeInt;
-begin
-  if not ContainsKey(p) then
-  begin
-    inc(bad_cng_ptr_cnt);
-    Exit(0);
-  end;
-  Result:=Size-Items[p];
-  AddOrSetValue(p, Size);
-end;
-
 
 procedure SaveProfileToFile(filename: string = '');
+type
+  TListUInt64 = specialize TList<UInt64>;
+  TNodeStack = specialize TStack<TNodeIndexStruct>;
 var
-  i, ii: Integer;
-  stack_index: LongInt = -1;
-  stack: array of record
-    arr: PCodePointerArray;
-    index: LongInt;
-  end;
-  index_arr_size: LongInt = -1;
-  index_arr: array of UInt64;
+  i: Integer;
+  node_index: TNodeIndexStruct;
+  node_stack: TNodeStack;
+  index_arr: TListUInt64;
 
-  group_index, group_index_counter: LongInt;
-  pstack_arr: PCodePointerArray;
-  has_children: Boolean;
+  group_index_counter: LongInt;
   MemoryManagerWasReplaced: Boolean;
   data_size: LongInt = 0;
   ms,cs: TStream;
 
-  procedure push_index_value(const index: LongInt; const value: UInt64); inline;
-  begin
-    if index>=Length(index_arr) then SetLength(index_arr, index+10000);
-    if index>=index_arr_size then index_arr_size:=index+1;
-    index_arr[index]:=value;
-  end;
-  procedure push(const val: PCodePointerArray; const index: LongInt); inline;
-  begin
-    inc(stack_index);
-    if stack_index=Length(stack) then SetLength(stack, Length(stack)+100);
-    stack[stack_index].arr:=val;
-    stack[stack_index].index:=index;
-  end;
-  procedure pop(out arr: PCodePointerArray; out index: LongInt); inline;
-  begin
-    arr:=stack[stack_index].arr;
-    index:=stack[stack_index].index;
-    dec(stack_index);
-  end;
-
   procedure write_header; inline;
+  var
+    cnt: LongInt;
   begin
     ms.Seek(0, soBeginning);
     ms.Write(data_size, SizeOf(data_size));
-    ms.Write(index_arr_size, SizeOf(index_arr_size));
+    cnt:=index_arr.Count;
+    ms.Write(cnt, SizeOf(cnt));
     ms.Seek(0, soEnd);
   end;
   procedure write_nodes_index; inline;
   begin
-    cs.Write(index_arr[0], SizeOf(index_arr[0])*index_arr_size);
+    cs.Write(index_arr.List[0], SizeOf(index_arr.List[0])*index_arr.Count);
   end;
   procedure write_node_count(const count: integer); inline;
   begin
@@ -316,8 +296,6 @@ var
     inc(data_size, SizeOf(TInfo));
   end;
 begin
-  i:=sizeof(TInfo);
-
   MemoryManagerWasReplaced:=IsMemoryManagerReplaced;
 
   if MemoryManagerWasReplaced then SetMemoryManager(OldMM);
@@ -326,32 +304,35 @@ begin
   ms := TMemoryStream.Create;
   cs := TCompressionStream.Create(clfastest, ms);
 
+
+  index_arr:=TListUInt64.Create;
+  node_stack:=TNodeStack.Create;
+
   group_index_counter:=0;
 
   write_header;
-  for i:=Low(root_stack) to High(root_stack) do
+
+  node_stack.Push(TNodeIndexStruct.init(@root_node, group_index_counter));
+  while node_stack.Count>0 do
   begin
-    push(@root_stack[i].stack_tree, group_index_counter);
+    node_index:=node_stack.Pop;
 
-    while stack_index>=0 do
+    if node_index.group_index>=index_arr.Count then index_arr.Count:=node_index.group_index+1;
+    index_arr[node_index.group_index]:=data_size;
+    write_node_group_index(node_index.group_index);
+    write_node_count(Length(node_index.node^.child_nodes));
+    for i:=Low(node_index.node^.child_nodes) to High(node_index.node^.child_nodes) do
     begin
-      pop(pstack_arr, group_index);
+      write_node(node_index.node^.child_nodes[i].node_data);
+      write_node_has_children(Length(node_index.node^.child_nodes[i].child_nodes)>0);
 
-      push_index_value(group_index, data_size);
-      write_node_group_index(group_index);
-      write_node_count(Length(pstack_arr^));
-      for ii:=Low(pstack_arr^) to High(pstack_arr^) do
-      begin
-        write_node(pstack_arr^[ii].data);
-        has_children:=Length(pstack_arr^[ii].next)>0;
-        write_node_has_children(has_children);
+      inc(group_index_counter);
+      write_node_group_index(group_index_counter);
 
-        inc(group_index_counter);
-        write_node_group_index(group_index_counter);
-        push(@pstack_arr^[ii].next, group_index_counter);
-      end;
+      node_stack.Push(TNodeIndexStruct.init(@node_index.node^.child_nodes[i], group_index_counter));
     end;
   end;
+
   write_nodes_index;
 
   write_header;
@@ -359,6 +340,9 @@ begin
   cs.Free;
   TMemoryStream(ms).SaveToFile(filename);
   ms.Free;
+
+  index_arr.Free;
+  node_stack.Free;
 
   if MemoryManagerWasReplaced then SetMemoryManager(NewMM);
 end;
