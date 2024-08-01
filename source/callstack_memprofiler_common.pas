@@ -5,8 +5,8 @@ unit callstack_memprofiler_common;
 interface
 
 type
-  PInfo = ^TInfo;
-  TInfo = packed record
+  PMemProfilerNodeData = ^TMemProfilerNodeData;
+  TMemProfilerNodeData = packed record
     code_addr: CodePointer;
     real_size: SizeInt;
     mem_sum_alloc,
@@ -27,14 +27,14 @@ type
 
 implementation
 
-procedure TInfo.init(addr: CodePointer);
+procedure TMemProfilerNodeData.init(addr: CodePointer);
 begin
   code_addr:=addr;
   min_block_alloc:=High(min_block_alloc);
   min_block_free:=High(min_block_free);
 end;
 
-procedure TInfo.update(mem_size: SizeInt);
+procedure TMemProfilerNodeData.update(mem_size: SizeInt);
 begin
   if mem_size>0 then
   begin
@@ -65,7 +65,7 @@ begin
   end;
 end;
 
-function TInfo.avg_alloc_block_size: SizeInt;
+function TMemProfilerNodeData.avg_alloc_block_size: SizeInt;
 begin
   if count_alloc>0 then
   begin
@@ -76,7 +76,7 @@ begin
   end;
 end;
 
-function TInfo.avg_free_block_size: SizeInt;
+function TMemProfilerNodeData.avg_free_block_size: SizeInt;
 begin
   if count_free>0 then
   begin
@@ -87,12 +87,12 @@ begin
   end;
 end;
 
-function TInfo.count: Cardinal;
+function TMemProfilerNodeData.count: Cardinal;
 begin
   result:=count_alloc+count_free;
 end;
 
-function TInfo.mem_size: SizeInt;
+function TMemProfilerNodeData.mem_size: SizeInt;
 begin
   result:=mem_sum_alloc-mem_sum_free;
 end;

@@ -1,13 +1,13 @@
 unit callstack_memprofiler;
 {$mode objfpc}{$H+}
-{$modeswitch advancedrecords}
 
 interface
 
 uses
-  SysUtils, Generics.Collections, Classes, callstack_memprofiler_common, ZStream;
+  Classes, Generics.Collections, callstack_memprofiler_common, nodetree, nodetreedataio;
 
 procedure SaveProfileToFile(filename: string = '');
+procedure LoadProfileFromFile(filename: string);
 procedure ReplaceMemoryManager;
 function IsMemoryManagerReplaced: Boolean;
 procedure RestoreMemoryManager;
@@ -18,24 +18,11 @@ implementation
 type
   {TODO: отслеживать как-то AllocMem и GetMem отдельно}
 
-  generic TNode<T> = record
-  type
-    PNode = ^TNode;
-  public
-    node_data: T;
-    child_nodes: array of TNode;
-    function add_child_node: PNode; inline;
-  end;
-  // сохранение тоже выделить в TNode, и возможно загрузку тоже и вынести в отдельный юнит
-
-  PMemProfilerNode = ^TMemProfilerNode;
-  TMemProfilerNode = specialize TNode<TInfo>;
-  HMemProfilerNodeHelper = record helper for TMemprofilerNode
-    function find_child_node(addr: CodePointer): PMemProfilerNode;// inline; // bug in FPC #40865
+  TMemProfilerNodeTree = class sealed(specialize TNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO>)
+    class function find_child_node(node: PNode; addr: CodePointer): PNode; static; inline;
   end;
 
-
-  TMemUsageMonitor = class(specialize TDictionary<Pointer, SizeInt>)
+  TMemUsageMonitor = class sealed(specialize TDictionary<Pointer, SizeInt>)
     function AddPtr(p:pointer; Size:SizeInt):SizeInt; inline;
     function DelPtr(p:pointer):SizeInt; inline;
     function ChgPtr(p:pointer; Size:SizeInt):SizeInt; inline;
@@ -46,38 +33,35 @@ const
   skip_memusage_bottom_frames = 2;
 
 var
-  root_node: TMemProfilerNode;
+  memprofiler_tree: TMemProfilerNodeTree;
   mem_monitor: TMemUsageMonitor;
   NewMM, OldMM: TMemoryManager;
 
-function TNode.add_child_node: PNode;
-begin
-  SetLength(child_nodes, length(child_nodes)+1);
-  Result:=@child_nodes[high(child_nodes)];
-end;
-
-function HMemProfilerNodeHelper.find_child_node(addr: CodePointer): PMemProfilerNode;
+class function TMemProfilerNodeTree.find_child_node(node: PNode; addr: CodePointer): PNode;
 var
   i: longint;
 begin
-  for i:=low(child_nodes) to high(child_nodes) do
-    if child_nodes[i].node_data.code_addr=addr then Exit(@child_nodes[i]);
-  Result:=nil
+  with node^ do
+  begin
+    for i:=low(child_nodes) to high(child_nodes) do
+      if child_nodes[i].node_data.code_addr=addr then Exit(@child_nodes[i]);
+    Result:=nil
+  end;
 end;
 
 procedure collect_callstack(mem_size: SizeInt; skip_frames: integer = 2; skip_bottom_frames: integer=0);
 var
   frames: array [0..255] of codepointer;
-  node, found_node: PMemProfilerNode;
+  node, found_node: TMemProfilerNodeTree.PNode;
   i, count: longint;
 begin
   count:=CaptureBacktrace(skip_frames,255,@frames[0]);
 
-  node:=@root_node;
+  node:=@memprofiler_tree.root_node;
 
   for i:=count-1-skip_bottom_frames downto 0 do
   begin
-    found_node:=node^.find_child_node(frames[i]);
+    found_node:=TMemProfilerNodeTree.find_child_node(node, frames[i]);
 
     if Assigned(found_node) then
       begin
@@ -85,7 +69,7 @@ begin
       end
     else
       begin
-        node:=node^.add_child_node;
+        node:=TMemProfilerNodeTree.add_child_node(node);
         node^.node_data.init(frames[i]);
       end;
 
@@ -183,6 +167,7 @@ begin
   SetMemoryManager(NewMM);
 end;
 
+
 procedure ReplaceMemoryManager;
 var
   MM: TMemoryManager;
@@ -190,6 +175,7 @@ begin
   GetMemoryManager(MM);
   if MM.AllocMem<>@NewAllocMem then
   begin
+    memprofiler_tree:=TMemProfilerNodeTree.Create;
     mem_monitor:=TMemUsageMonitor.Create;
 
     OldMM:=MM;
@@ -221,6 +207,7 @@ begin
   if MM.AllocMem=@NewAllocMem then
   begin
     SetMemoryManager(OldMM);
+    memprofiler_tree.Free;
     mem_monitor.Free;
   end;
 end;
@@ -228,121 +215,34 @@ end;
 procedure ResetData;
 begin
   SetMemoryManager(OldMM);
+  memprofiler_tree.Clear;
   mem_monitor.Clear;
-  SetLength(root_node.child_nodes, 0);
   SetMemoryManager(NewMM);
 end;
 
 
-type
-  TNodeIndexStruct = record
-    node: PMemProfilerNode;
-    group_index: LongInt;
-    class function init(const node_:PMemProfilerNode; const group_index_:LongInt): TNodeIndexStruct; static; inline;
-  end;
-class function TNodeIndexStruct.init(const node_:PMemProfilerNode; const group_index_:LongInt): TNodeIndexStruct;
-begin
-  Result.node:=node_;
-  Result.group_index:=group_index_;
-end;
-
 procedure SaveProfileToFile(filename: string = '');
-type
-  TListUInt64 = specialize TList<UInt64>;
-  TNodeStack = specialize TStack<TNodeIndexStruct>;
 var
-  i: Integer;
-  node_index: TNodeIndexStruct;
-  node_stack: TNodeStack;
-  index_arr: TListUInt64;
-
-  group_index_counter: LongInt;
   MemoryManagerWasReplaced: Boolean;
-  data_size: LongInt = 0;
-  ms,cs: TStream;
-
-  procedure write_header; inline;
-  var
-    cnt: LongInt;
-  begin
-    ms.Seek(0, soBeginning);
-    ms.Write(data_size, SizeOf(data_size));
-    cnt:=index_arr.Count;
-    ms.Write(cnt, SizeOf(cnt));
-    ms.Seek(0, soEnd);
-  end;
-  procedure write_nodes_index; inline;
-  begin
-    cs.Write(index_arr.List[0], SizeOf(index_arr.List[0])*index_arr.Count);
-  end;
-  procedure write_node_count(const count: integer); inline;
-  begin
-    cs.Write(count, SizeOf(count));
-    inc(data_size, SizeOf(count));
-  end;
-  procedure write_node_group_index(const index: LongInt); inline;
-  begin
-    cs.Write(index, SizeOf(index));
-    inc(data_size, SizeOf(index));
-  end;
-  procedure write_node_has_children(const has_children: Boolean); inline;
-  begin
-    cs.Write(has_children, SizeOf(has_children));
-    inc(data_size, SizeOf(has_children));
-  end;
-  procedure write_node(const data: TInfo); inline;
-  begin
-    cs.Write(data, SizeOf(TInfo));
-    inc(data_size, SizeOf(TInfo));
-  end;
 begin
   MemoryManagerWasReplaced:=IsMemoryManagerReplaced;
 
   if MemoryManagerWasReplaced then SetMemoryManager(OldMM);
 
-  if filename='' then filename:=FormatDateTime('yyyymmddHHMMSS', Now)+'.memprof';
-  ms := TMemoryStream.Create;
-  cs := TCompressionStream.Create(clfastest, ms);
+  memprofiler_tree.SaveToFile(filename);
 
+  if MemoryManagerWasReplaced then SetMemoryManager(NewMM);
+end;
 
-  index_arr:=TListUInt64.Create;
-  node_stack:=TNodeStack.Create;
+procedure LoadProfileFromFile(filename: string);
+var
+  MemoryManagerWasReplaced: Boolean;
+begin
+  MemoryManagerWasReplaced:=IsMemoryManagerReplaced;
 
-  group_index_counter:=0;
+  if MemoryManagerWasReplaced then SetMemoryManager(OldMM);
 
-  write_header;
-
-  node_stack.Push(TNodeIndexStruct.init(@root_node, group_index_counter));
-  while node_stack.Count>0 do
-  begin
-    node_index:=node_stack.Pop;
-
-    if node_index.group_index>=index_arr.Count then index_arr.Count:=node_index.group_index+1;
-    index_arr[node_index.group_index]:=data_size;
-    write_node_group_index(node_index.group_index);
-    write_node_count(Length(node_index.node^.child_nodes));
-    for i:=Low(node_index.node^.child_nodes) to High(node_index.node^.child_nodes) do
-    begin
-      write_node(node_index.node^.child_nodes[i].node_data);
-      write_node_has_children(Length(node_index.node^.child_nodes[i].child_nodes)>0);
-
-      inc(group_index_counter);
-      write_node_group_index(group_index_counter);
-
-      node_stack.Push(TNodeIndexStruct.init(@node_index.node^.child_nodes[i], group_index_counter));
-    end;
-  end;
-
-  write_nodes_index;
-
-  write_header;
-
-  cs.Free;
-  TMemoryStream(ms).SaveToFile(filename);
-  ms.Free;
-
-  index_arr.Free;
-  node_stack.Free;
+  memprofiler_tree.LoadFromFile(filename);
 
   if MemoryManagerWasReplaced then SetMemoryManager(NewMM);
 end;
@@ -351,6 +251,7 @@ procedure ExitProc;
 begin
   RestoreMemoryManager;
 end;
+
 
 initialization
   AddExitProc(@ExitProc);
