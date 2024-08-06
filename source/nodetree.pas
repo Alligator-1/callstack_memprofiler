@@ -5,154 +5,249 @@ unit nodetree;
 interface
 
 type
-  TEmptyRecord = record end;
-  TLazyLoadData = record
-    loaded: Boolean;
-    offset: UInt64;
-  end;
-
-  // переделать в интерфейс? "-": лишние данные, "+": ?
-  TAbstractDataIO = class abstract
+  TAbstractDataIO = class
     procedure ReadData(var data; size: UInt64); virtual; abstract;
     procedure WriteData(const data; size: UInt64); virtual; abstract;
   end;
 
+  TAbstractNodeComparator = class
+    class function IsEqual(node_data: Pointer; data: Pointer): Boolean; virtual; abstract;
+  end;
 
-  // 1. подумать о переходе на массив указателей (тогда Node'у к тому же можно будет сделать классом)
-  //    нужен бенчмарк (взять с реального проекта количество чтений и кол-во добавлений)
-  //    или... подумать как сделать ещё один слой и скрыть это за ним
-  //    слой должен быть таким, чтобы не влиял на производительность
-  //
-  // 2. т.к. кол-во чтений на вскидку должно быть от 10 раз (а сокрее и от 100) преобладать над кол-вом добавлений
-  //    поэтому и есть сомнения что будет быстрее... за счёт локальности данных в памяти массива
-  //
-  // 3. Если делать динамическое выделение - то рассмотреть chunked array для хранения данных
-  //    а если ещё удастся скрыть это всё за слоем - то получится элегантно переключаться между всеми тремя вариантами:
-  //    а) как сейчас - перевыделение массива с данными
-  //    б) перевыделение массива с индексом данных в chunked array
-  //    в) перевыделение массива с указателями в динамически выделенной памяти
-  //
-  // 4. Найти соотношение на реальном проекте количества нод к количеству массивов = средняя длина массива -> сделать чуть
-  //    более умное выделение или, может быть перейти на TList<>?(больше расход данных на каждый массив(экземплярные данные) -
-  //    оценить, на фоне того, что он резервирует данные может это вообще не существенно...,
-  //    кроме того нужно будет сделать свой цикл освобождения всех данных дерева... чето пока лень,
-  //    нужны тесты/бенчмарки - от этого и плясать)
-  generic TAbstractNodeTree<TNodeDataType, TNodeDataIO, TAdditionalData> = class abstract
+  generic TNodeTreeLoaderSaver<TNodeTree, TNodeDataIO> = class sealed
+    class procedure SaveToFile(node: Pointer; const filename: string); static;
+    class procedure LoadFromFile(node: Pointer; const filename: string); static;
+  end;
+
+  generic TSimpleArrayNodeTree<TNodeData, TNodeDataIO, TNodeComparator> = class sealed
   type
-    PNodeDataType = ^TNodeDataType;
-    TNodeDataType_ = TNodeDataType; /////// УДАЛИТЬ ПОТОМ?!! Когда протестирую Viewer
+    TNodeDataType = TNodeData;
     PNode = ^TNode;
     TNode = record
-      node_data: TNodeDataType;
-      additional_data: TAdditionalData;
+      node_data: TNodeData;
       child_nodes: array of TNode;
     end;
+
+    TSelf = specialize TSimpleArrayNodeTree<TNodeData, TNodeDataIO, TNodeComparator>;
+    TLoaderSaver = specialize TNodeTreeLoaderSaver<TSelf, TNodeDataIO>;
   public
     root_node: TNode;
-    class function add_child_node(node: PNode): PNode; static; inline;
+    class function get_child_count(node: PNode): SizeInt; static; inline;
+    class procedure set_child_count(node: PNode; count: SizeInt); static; inline;
+    class function get_child(node: PNode; i: SizeInt): PNode; static; inline;
+    class function add_child(node: PNode): PNode; static; inline;
+    class function find_child_node(node: PNode; data: Pointer): PNode; static; inline;
+    procedure Clear;
+    procedure SaveToFile(const filename: string = '');
+    procedure LoadFromFile(const filename: string);
+  end;
+
+  generic TPointerArrayNodeTree<TNodeData, TNodeDataIO, TNodeComparator> = class sealed
+  type
+    TNodeDataType = TNodeData;
+    PNode = ^TNode;
+    TNode = record
+      node_data: TNodeData;
+      child_nodes: array of PNode;
+    end;
+
+    TSelf = specialize TPointerArrayNodeTree<TNodeData, TNodeDataIO, TNodeComparator>;
+    TLoaderSaver = specialize TNodeTreeLoaderSaver<TSelf, TNodeDataIO>;
+  strict private
+    class procedure free_reqursive(node: PNode); static;// inline;
+  public
+    root_node: TNode;
+    class function get_child_count(node: PNode): SizeInt; static; inline;
+    class procedure set_child_count(node: PNode; count: SizeInt); static; inline;
+    class function get_child(node: PNode; i: SizeInt): PNode; static; inline;
+    class function add_child(node: PNode): PNode; static; inline;
+    class function find_child_node(node: PNode; data: Pointer): PNode; static; inline;
     destructor Destroy; override;
     procedure Clear;
-    procedure SaveToFile(filename: string = '');
-    procedure LoadFromFile(filename: string);
-  end;
-
-  generic TNodeTree<TNodeDataType, TNodeDataIO> = class(specialize TAbstractNodeTree<TNodeDataType, TNodeDataIO, TEmptyRecord>);
-
-  generic TLazyLoadNodeTree<TNodeDataType, TNodeDataIO> = class(specialize TAbstractNodeTree<TNodeDataType, TNodeDataIO, TLazyLoadData>)
-
-  end;
-
-  generic TAutoGrowStack<T> = record
-  type
-    T_ = T;
-  public
-    stack: array of T;
-    count: UInt32;
-    procedure set_by_index(index: UInt32; value: T); inline;
-    property getset[index: UInt32]:T write set_by_index; default;
+    procedure SaveToFile(const filename: string = '');
+    procedure LoadFromFile(const filename: string);
   end;
 
 implementation
 
-{ TAbstractDataIO }
-
-procedure TAbstractNodeTree.Clear;
+class function TSimpleArrayNodeTree.get_child_count(node: PNode): SizeInt;
 begin
-  SetLength(root_node.child_nodes, 0);
+  Result:=Length(node^.child_nodes);
 end;
 
-procedure TAbstractNodeTree.SaveToFile(filename: string);
+class procedure TSimpleArrayNodeTree.set_child_count(node: PNode; count: SizeInt);
+begin
+  SetLength(node^.child_nodes, count);
+end;
+
+class function TSimpleArrayNodeTree.get_child(node: PNode; i: SizeInt): PNode;
+begin
+  Result:=@node^.child_nodes[i];
+end;
+
+class function TSimpleArrayNodeTree.add_child(node: PNode): PNode;
+begin
+  set_child_count(node, get_child_count(node)+1);
+  Result:=get_child(node, get_child_count(node)-1);
+end;
+
+class function TSimpleArrayNodeTree.find_child_node(node: PNode; data: Pointer): PNode;
+var
+  i: longint;
+begin
+  for i:=0 to get_child_count(node)-1 do
+    if TNodeComparator.IsEqual(@get_child(node, i)^.node_data, data) then Exit(get_child(node, i));
+  Result:=nil
+end;
+
+procedure TSimpleArrayNodeTree.Clear;
+begin
+  set_child_count(@root_node, 0);
+end;
+
+procedure TSimpleArrayNodeTree.SaveToFile(const filename: string);
+begin
+  TLoaderSaver.SaveToFile(@root_node, filename);
+end;
+
+procedure TSimpleArrayNodeTree.LoadFromFile(const filename: string);
+begin
+  Clear;
+  TLoaderSaver.LoadFromFile(@root_node, filename);
+end;
+
+
+class procedure TPointerArrayNodeTree.free_reqursive(node: PNode);
+var
+  i: SizeInt;
+begin
+  for i:=0 to Length(node^.child_nodes)-1 do free_reqursive(node^.child_nodes[i]);
+  SetLength(node^.child_nodes, 0);
+  Dispose(node);
+end;
+
+class function TPointerArrayNodeTree.get_child_count(node: PNode): SizeInt;
+begin
+  Result:=Length(node^.child_nodes);
+end;
+
+class procedure TPointerArrayNodeTree.set_child_count(node: PNode; count: SizeInt);
+var
+  old_len, i: SizeInt;
+begin
+  old_len:=Length(node^.child_nodes);
+  if count>old_len then
+  begin
+    SetLength(node^.child_nodes, count);
+    for i:=old_len to count-1 do
+    begin
+      New(node^.child_nodes[i]);
+      FillChar(node^.child_nodes[i]^, SizeOf(TNode), 0);
+    end;
+  end else
+  begin
+    for i:=count to old_len-1 do free_reqursive(node^.child_nodes[i]);
+    SetLength(node^.child_nodes, count);
+  end;
+end;
+
+class function TPointerArrayNodeTree.get_child(node: PNode; i: SizeInt): PNode;
+begin
+  Result:=node^.child_nodes[i];
+end;
+
+class function TPointerArrayNodeTree.add_child(node: PNode): PNode;
+var
+  child_count: SizeInt;
+begin
+  child_count := get_child_count(node);
+  set_child_count(node, child_count+1);
+  Result:=get_child(node, child_count);
+end;
+
+class function TPointerArrayNodeTree.find_child_node(node: PNode; data: Pointer): PNode;
+var
+  i: longint;
+begin
+  for i:=0 to get_child_count(node)-1 do
+    if TNodeComparator.IsEqual(@get_child(node, i)^.node_data, data) then Exit(get_child(node, i));
+  Result:=nil
+end;
+
+destructor TPointerArrayNodeTree.Destroy;
+begin
+  inherited Destroy;
+  Clear;
+end;
+
+procedure TPointerArrayNodeTree.Clear;
+begin
+  set_child_count(@root_node, 0);
+end;
+
+procedure TPointerArrayNodeTree.SaveToFile(const filename: string);
+begin
+  TLoaderSaver.SaveToFile(@root_node, filename);
+end;
+
+procedure TPointerArrayNodeTree.LoadFromFile(const filename: string);
+begin
+  Clear;
+  TLoaderSaver.LoadFromFile(@root_node, filename);
+end;
+
+
+
+// --------------------
+class procedure TNodeTreeLoaderSaver.SaveToFile(node: Pointer; const filename: string);
 var
   NodeDataIO: TNodeDataIO;
   child_count: UInt32;
 
-  procedure SaveNodeRecursive(var node: TNode);
+  procedure SaveNodeRecursive(node: Pointer);
   var
     i: Int32;
   begin
-    NodeDataIO.WriteData(node.node_data, SizeOf(TNodeDataType));
+    NodeDataIO.WriteData(TNodeTree.PNode(node)^.node_data, SizeOf(TNodeTree.TNodeDataType));
 
-    child_count:=Length(node.child_nodes);
+    child_count:=TNodeTree.get_child_count(node);
     NodeDataIO.WriteData(child_count, SizeOf(child_count));
 
-    for i:=Low(node.child_nodes) to High(node.child_nodes) do
-      SaveNodeRecursive(node.child_nodes[i]);
+    for i:=0 to TNodeTree.get_child_count(node)-1 do
+      SaveNodeRecursive(TNodeTree.get_child(node, i));
   end;
 begin
   NodeDataIO:=TNodeDataIO.Create(filename);
 
-  SaveNodeRecursive(root_node);
+  SaveNodeRecursive(node);
 
   NodeDataIO.Free;
 end;
 
-procedure TAbstractNodeTree.LoadFromFile(filename: string);
+class procedure TNodeTreeLoaderSaver.LoadFromFile(node: Pointer; const filename: string);
 var
   NodeDataIO: TNodeDataIO;
   child_count: UInt32;
 
-  procedure LoadNodeRecursive(var node: TNode);
+  procedure LoadNodeRecursive(node: Pointer);
   var
     i: Int32;
   begin
-    NodeDataIO.ReadData(node.node_data, SizeOf(TNodeDataType));
+    NodeDataIO.ReadData(TNodeTree.PNode(node)^.node_data, SizeOf(TNodeTree.TNodeDataType));
     NodeDataIO.ReadData(child_count, SizeOf(child_count));
-    SetLength(node.child_nodes, child_count);
+    TNodeTree.set_child_count(node, child_count);
 
-    for i:=Low(node.child_nodes) to High(node.child_nodes) do
-      LoadNodeRecursive(node.child_nodes[i]);
+    for i:=0 to TNodeTree.get_child_count(node)-1 do
+      LoadNodeRecursive(TNodeTree.get_child(node, i));
   end;
 begin
-  Clear;
-
   NodeDataIO:=TNodeDataIO.Create(filename);
 
-  LoadNodeRecursive(root_node);
+  LoadNodeRecursive(node);
 
   NodeDataIO.Free;
 end;
 
-destructor TAbstractNodeTree.Destroy;
-begin
-  Clear;
-  inherited Destroy;
-end;
-
-class function TAbstractNodeTree.add_child_node(node: PNode): PNode;
-begin
-  with node^ do
-  begin
-    SetLength(child_nodes, Length(child_nodes)+1);
-    Result:=@child_nodes[high(child_nodes)];
-  end;
-end;
-
-procedure TAutoGrowStack.set_by_index(index: UInt32; value: T);
-begin
-  if index>high(stack) then SetLength(stack, Length(stack)+10000);
-  if index>=count then count:=index+1; // можно заменить на inc(count), но так надёжнее
-  stack[index]:=value;
-end;
 
 end.
 

@@ -18,9 +18,12 @@ implementation
 type
   {TODO: отслеживать как-то AllocMem и GetMem отдельно}
 
-  TMemProfilerNodeTree = class sealed(specialize TNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO>)
-    class function find_child_node(node: PNode; addr: CodePointer): PNode; static; inline;
+  TNodeComparator = class sealed
+    class function IsEqual(node_data: Pointer; data: Pointer): Boolean; static; inline;
   end;
+
+  //TMemProfilerNodeTree = specialize TSimpleArrayNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO, TNodeComparator>;
+  TMemProfilerNodeTree = specialize TPointerArrayNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO, TNodeComparator>;
 
   TMemUsageMonitor = class sealed(specialize TDictionary<Pointer, SizeInt>)
     function AddPtr(p:pointer; Size:SizeInt):SizeInt; inline;
@@ -36,18 +39,6 @@ var
   memprofiler_tree: TMemProfilerNodeTree;
   mem_monitor: TMemUsageMonitor;
   NewMM, OldMM: TMemoryManager;
-
-class function TMemProfilerNodeTree.find_child_node(node: PNode; addr: CodePointer): PNode;
-var
-  i: longint;
-begin
-  with node^ do
-  begin
-    for i:=low(child_nodes) to high(child_nodes) do
-      if child_nodes[i].node_data.code_addr=addr then Exit(@child_nodes[i]);
-    Result:=nil
-  end;
-end;
 
 procedure collect_callstack(mem_size: SizeInt; skip_frames: integer = 2; skip_bottom_frames: integer=0);
 var
@@ -69,7 +60,7 @@ begin
       end
     else
       begin
-        node:=TMemProfilerNodeTree.add_child_node(node);
+        node:=TMemProfilerNodeTree.add_child(node);
         node^.node_data.init(frames[i]);
       end;
 
@@ -81,6 +72,11 @@ var
   bad_add_ptr_cnt:integer=0;
   bad_del_ptr_cnt:integer=0;
   bad_cng_ptr_cnt:integer=0;
+
+class function TNodeComparator.IsEqual(node_data: Pointer; data: Pointer): Boolean;
+begin
+  Result:=PMemProfilerNodeData(node_data)^.code_addr = data;
+end;
 
 function TMemUsageMonitor.AddPtr(p: pointer; Size: SizeInt): SizeInt;
 begin

@@ -1,0 +1,41 @@
+object MainForm: TMainForm
+  Left = 254
+  Height = 240
+  Top = 122
+  Width = 320
+  Caption = 'MainForm'
+  ClientHeight = 240
+  ClientWidth = 320
+  LCLVersion = '3.99.0.0'
+  object btnReset: TButton
+    Left = 16
+    Height = 25
+    Top = 112
+    Width = 75
+    Caption = 'reset'
+    TabOrder = 0
+    OnClick = btnResetClick
+  end
+  object btnLoad: TButton
+    Left = 16
+    Height = 25
+    Top = 64
+    Width = 75
+    Caption = 'load dump'
+    TabOrder = 1
+    OnClick = btnLoadClick
+  end
+  object btnSave: TButton
+    Left = 16
+    Height = 25
+    Top = 16
+    Width = 75
+    Caption = 'save dump'
+    TabOrder = 2
+    OnClick = btnSaveClick
+  end
+  object OpenDialog: TOpenDialog
+    Left = 112
+    Top = 16
+  end
+end

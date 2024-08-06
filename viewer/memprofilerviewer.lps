@@ -10,7 +10,7 @@
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
         <CursorPos X="28" Y="20"/>
-        <UsageCount Value="149"/>
+        <UsageCount Value="211"/>
       </Unit>
       <Unit>
         <Filename Value="umainform.pas"/>
@@ -19,18 +19,10 @@
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <IsVisibleTab Value="True"/>
-        <UsageCount Value="149"/>
+        <CursorPos X="20" Y="18"/>
+        <UsageCount Value="211"/>
         <Loaded Value="True"/>
         <LoadedDesigner Value="True"/>
-      </Unit>
-      <Unit>
-        <Filename Value="mainform.pas"/>
-        <ComponentName Value="MainForm"/>
-        <ResourceBaseClass Value="Form"/>
-        <UnitName Value="umainform"/>
-        <EditorIndex Value="-1"/>
-        <CursorPos X="7"/>
-        <UsageCount Value="8"/>
       </Unit>
       <Unit>
         <Filename Value="C:\fpclaztrunk\lazarus\components\virtualtreeview\laz.virtualtrees.pas"/>
@@ -38,164 +30,71 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="32789"/>
         <CursorPos X="3" Y="32442"/>
-        <UsageCount Value="31"/>
-      </Unit>
-      <Unit>
-        <Filename Value="C:\fpclaztrunk\fpcsrc\rtl\inc\heap.inc"/>
-        <EditorIndex Value="-1"/>
-        <TopLine Value="322"/>
-        <CursorPos X="3" Y="326"/>
-        <UsageCount Value="19"/>
-      </Unit>
-      <Unit>
-        <Filename Value="..\ZSTD.pas\ZSTDLib.pas"/>
-        <EditorIndex Value="-1"/>
-        <TopLine Value="950"/>
-        <CursorPos Y="974"/>
-        <UsageCount Value="19"/>
-      </Unit>
-      <Unit>
-        <Filename Value="C:\fpclaztrunk\fpcsrc\rtl\inc\heaph.inc"/>
-        <EditorIndex Value="-1"/>
-        <TopLine Value="75"/>
-        <CursorPos X="16" Y="102"/>
-        <UsageCount Value="4"/>
+        <UsageCount Value="8"/>
       </Unit>
       <Unit>
         <Filename Value="..\source\nodetree.pas"/>
-        <EditorIndex Value="1"/>
-        <UsageCount Value="47"/>
-        <Loaded Value="True"/>
-      </Unit>
-      <Unit>
-        <Filename Value="C:\fpclaztrunk\lazarus\components\lazutils\lazclasses.pas"/>
-        <UnitName Value="LazClasses"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="264"/>
-        <CursorPos Y="281"/>
-        <UsageCount Value="19"/>
+        <CursorPos Y="12"/>
+        <UsageCount Value="164"/>
       </Unit>
     </Units>
-    <JumpHistory HistoryIndex="29">
+    <JumpHistory HistoryIndex="13">
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="292" TopLine="287"/>
-      </Position>
-      <Position>
-        <Filename Value="umainform.pas"/>
-        <Caret Line="422"/>
+        <Caret Line="251" Column="43"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="91" Column="27"/>
-      </Position>
-      <Position>
-        <Filename Value="..\source\nodetree.pas"/>
-        <Caret Line="29" Column="20"/>
-      </Position>
-      <Position>
-        <Filename Value="..\source\nodetree.pas"/>
-        <Caret Line="27" Column="65"/>
+        <Caret Line="174" Column="51" TopLine="156"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="61" Column="14" TopLine="53"/>
+        <Caret Line="172" Column="41" TopLine="156"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="350" Column="51" TopLine="321"/>
+        <Caret Line="174" Column="21" TopLine="156"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="53" Column="15" TopLine="36"/>
+        <Caret Line="174" Column="36" TopLine="165"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="393" Column="8" TopLine="393"/>
+        <Caret Line="223" Column="26" TopLine="205"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="91" Column="50" TopLine="76"/>
+        <Caret Line="346" Column="54" TopLine="318"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="27" Column="20" TopLine="16"/>
+        <Caret Line="261" Column="64" TopLine="241"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="88" Column="3" TopLine="70"/>
+        <Caret Line="337" Column="53" TopLine="3"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="176" Column="45" TopLine="158"/>
+        <Caret Line="15" Column="53"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="225" Column="51" TopLine="204"/>
-      </Position>
-      <Position>
-        <Filename Value="..\source\nodetree.pas"/>
-        <Caret Line="25" Column="35" TopLine="13"/>
+        <Caret Line="17" Column="116"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="225" Column="64" TopLine="207"/>
-      </Position>
-      <Position>
-        <Filename Value="..\source\nodetree.pas"/>
-        <Caret Line="99" Column="34" TopLine="81"/>
+        <Caret Line="15" Column="119"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="56" Column="17" TopLine="39"/>
+        <Caret Line="174" Column="18" TopLine="156"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="69" Column="35" TopLine="50"/>
-      </Position>
-      <Position>
-        <Filename Value="umainform.pas"/>
-        <Caret Line="391" Column="34" TopLine="363"/>
-      </Position>
-      <Position>
-        <Filename Value="umainform.pas"/>
-        <Caret Line="285" Column="45" TopLine="257"/>
-      </Position>
-      <Position>
-        <Filename Value="umainform.pas"/>
-        <Caret Line="301" Column="36" TopLine="284"/>
-      </Position>
-      <Position>
-        <Filename Value="umainform.pas"/>
-        <Caret Line="253" Column="38" TopLine="236"/>
-      </Position>
-      <Position>
-        <Filename Value="umainform.pas"/>
-        <Caret Line="238" Column="16" TopLine="223"/>
-      </Position>
-      <Position>
-        <Filename Value="umainform.pas"/>
-        <Caret Line="286" Column="56" TopLine="268"/>
-      </Position>
-      <Position>
-        <Filename Value="umainform.pas"/>
-        <Caret Line="291" Column="66" TopLine="275"/>
-      </Position>
-      <Position>
-        <Filename Value="umainform.pas"/>
-        <Caret Line="236" Column="36" TopLine="216"/>
-      </Position>
-      <Position>
-        <Filename Value="umainform.pas"/>
-        <Caret Line="42" Column="37" TopLine="312"/>
-      </Position>
-      <Position>
-        <Filename Value="umainform.pas"/>
-        <Caret Line="197" Column="6" TopLine="187"/>
-      </Position>
-      <Position>
-        <Filename Value="..\source\nodetree.pas"/>
-        <Caret Line="99" Column="34" TopLine="81"/>
+        <Caret Line="223" Column="10" TopLine="205"/>
       </Position>
     </JumpHistory>
     <RunParams>

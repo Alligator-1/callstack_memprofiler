@@ -4,9 +4,13 @@
     <Version Value="12"/>
     <PathDelim Value="\"/>
     <General>
+      <Flags>
+        <MainUnitHasCreateFormStatements Value="False"/>
+        <MainUnitHasTitleStatement Value="False"/>
+        <MainUnitHasScaledStatement Value="False"/>
+      </Flags>
       <SessionStorage Value="InProjectDir"/>
-      <Title Value="memprofilerviewer"/>
-      <Scaled Value="True"/>
+      <Title Value="example_callstack_memprofiler"/>
       <ResourceType Value="res"/>
       <UseXPManifest Value="True"/>
       <XPManifest>
@@ -25,18 +29,12 @@
     </RunParams>
     <RequiredPackages>
       <Item>
-        <PackageName Value="fpdebug"/>
-      </Item>
-      <Item>
-        <PackageName Value="laz.virtualtreeview_package"/>
-      </Item>
-      <Item>
         <PackageName Value="LCL"/>
       </Item>
     </RequiredPackages>
     <Units>
       <Unit>
-        <Filename Value="memprofilerviewer.lpr"/>
+        <Filename Value="example_callstack_memprofiler.lpr"/>
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
@@ -46,13 +44,21 @@
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
       </Unit>
+      <Unit>
+        <Filename Value="..\source\nodetree.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="..\source\nodetreedataio.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
     <Version Value="11"/>
     <PathDelim Value="\"/>
     <Target>
-      <Filename Value="memprofilerviewer"/>
+      <Filename Value="example_callstack_memprofiler"/>
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>

@@ -5,15 +5,15 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
-  Generics.Collections,
-  laz.VirtualTrees, nodetree, nodetreedataio, callstack_memprofiler_common,
+  Generics.Collections, laz.VirtualTrees, nodetree, nodetreedataio, callstack_memprofiler_common, math,
   FpDbgLoader, FpDbgDwarf, FpDbgInfo, FpDbgDwarfDataClasses, FpdMemoryTools, DbgIntfBaseTypes
   ;
 
 type
   TAddrNameDict = specialize TDictionary<Pointer, String>;
 
-  TMemProfilerTree = specialize TNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO>;
+  TMemProfilerTree = specialize TSimpleArrayNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO, TAbstractNodeComparator>;
+  //TMemProfilerTree = specialize TPointerArrayNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO, TAbstractNodeComparator>;
 
   TMainForm = class(TForm)
     btnLoadExecutable: TButton;
@@ -85,7 +85,7 @@ procedure TMainForm.FormCreate(Sender: TObject);
 var
   i: Integer;
 begin
-  vt.NodeDataSize:=SizeOf(Pointer); // PNode ? id?
+  vt.NodeDataSize:=SizeOf(Pointer);
 
   vt.TreeOptions.SelectionOptions:=vt.TreeOptions.SelectionOptions+[toFullRowSelect];
   vt.Header.MinHeight:=50;
@@ -133,8 +133,16 @@ begin
 end;
 
 procedure TMainForm.FormDropFiles(Sender: TObject; const FileNames: array of string);
+var
+  i: integer;
 begin
-  LoadMemProfile(FileNames[0]);
+  for i:=0 to Min(1, High(FileNames)) do
+  begin
+    case LowerCase(ExtractFileExt(FileNames[i])) of
+      '.memprof': LoadMemProfile(FileNames[i]);
+      '.exe': OpenDWARF(FileNames[i]);
+    end;
+  end;
 end;
 
 procedure TMainForm.vtBeforeCellPaint(Sender: TBaseVirtualTree; TargetCanvas: TCanvas; Node: PVirtualNode; Column: TColumnIndex; CellPaintMode: TVTCellPaintMode; CellRect: TRect; var ContentRect: TRect);
@@ -157,14 +165,14 @@ end;
 
 generic function CompareValue<T>(const a, b: T): Integer; inline;
 begin
-  Result:=1;
-  if a=b then Result:=0
-  else if a<b then Result:=-1;
+  if a>b then Result:=1
+  else if a<b then Result:=-1
+  else Result:=0;
 end;
 
 procedure TMainForm.vtCompareNodes(Sender: TBaseVirtualTree; Node1, Node2: PVirtualNode; Column: TColumnIndex; var Result: Integer);
 var
-  pndt1, pndt2: TMemProfilerTree.PNodeDataType;
+  pndt1, pndt2: ^TMemProfilerTree.TNodeDataType;
 begin
   if not Column in [1..13] then Exit;
 
@@ -197,21 +205,23 @@ end;
 
 procedure TMainForm.vtExpanded(Sender: TBaseVirtualTree; Node: PVirtualNode);
 begin
-  if (Sender.ChildCount[Node]=1) and (([vsToggling,vsExpanded] * Node^.FirstChild^.States)=[]) then Sender.ToggleNode(Node^.FirstChild);
+  with Sender do
+    if (ChildCount[Node]=1) and (([vsToggling,vsExpanded] * GetFirstChild(Node)^.States)=[]) then ToggleNode(GetFirstChild(Node));
 
   //TLazVirtualStringTree(Sender).Header.AutoFitColumns(False); // need timeout
 end;
 
 procedure TMainForm.vtExpanding(Sender: TBaseVirtualTree; Node: PVirtualNode; var Allowed: Boolean);
 begin
-  if Sender.HasChildren[Node] and (Sender.GetFirstChild(Node)=nil) then LoadNode(Node);
+  with Sender do
+    if HasChildren[Node] and (GetFirstChild(Node)=nil) then LoadNode(Node);
 end;
 
 procedure TMainForm.vtGetText(Sender: TBaseVirtualTree; Node: PVirtualNode; Column: TColumnIndex; TextType: TVSTTextType; var CellText: String);
 const
   null_str = '-';
 var
-  pndt: TMemProfilerTree.PNodeDataType;
+  pndt: ^TMemProfilerTree.TNodeDataType;
 begin
   pndt:=@TMemProfilerTree.PNode(PPointer(Sender.GetNodeData(Node))^)^.node_data;
 
@@ -247,10 +257,10 @@ begin
 
   vt.BeginUpdate;
 
-  for i:=0 to Length(pnd^.child_nodes)-1 do
+  for i:=0 to TMemProfilerTree.get_child_count(pnd)-1 do
   begin
-    pvn:=vt.AddChild(node, @pnd^.child_nodes[i]);
-    vt.HasChildren[pvn]:=Length(pnd^.child_nodes[i].child_nodes)<>0;
+    pvn:=vt.AddChild(node, TMemProfilerTree.get_child(pnd, i));
+    vt.HasChildren[pvn]:=TMemProfilerTree.get_child_count(TMemProfilerTree.get_child(pnd, i))<>0;
   end;
 
   vt.EndUpdate;
@@ -269,7 +279,6 @@ begin
 {$ELSE}
   DwarfInfo := TFpDwarfInfo.Create(ImageLoaderList, nil);
 {$ENDIF}
-
 
   DwarfInfo.LoadCompilationUnits;
 end;
@@ -307,7 +316,7 @@ begin
     line:=addr_info.Line;
     source:=addr_info.FileName;
 
-    addr_info.Free;
+    addr_info.ReleaseReference;
 
     if source<>'' then
     begin
@@ -335,7 +344,7 @@ begin
   MemProfilerTree.LoadFromFile(filename);
 
   pvn:=vt.AddChild(nil, @MemProfilerTree.root_node);
-  vt.HasChildren[pvn]:=Length(MemProfilerTree.root_node.child_nodes)<>0;
+  vt.HasChildren[pvn]:=TMemProfilerTree.get_child_count(@MemProfilerTree.root_node)<>0;
 
   vt.Header.AutoFitColumns(False);
 end;
