@@ -35,6 +35,11 @@
         <IsPartOfProject Value="True"/>
         <UsageCount Value="20"/>
       </Unit>
+      <Unit>
+        <Filename Value="..\source\callstack_memprofiler.pas"/>
+        <EditorIndex Value="-1"/>
+        <UsageCount Value="10"/>
+      </Unit>
     </Units>
     <JumpHistory HistoryIndex="1">
       <Position>
@@ -42,7 +47,7 @@
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
-        <Caret Line="8" Column="33"/>
+        <Caret Line="8"/>
       </Position>
     </JumpHistory>
     <RunParams>

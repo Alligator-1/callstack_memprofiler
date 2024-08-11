@@ -1,0 +1,3 @@
+[submodule "source/nodetree"]
+	path = source/nodetree
+	url = https://github.com/Alligator-1/nodetree.git
