@@ -22,8 +22,7 @@ type
     class function IsEqual(node_data: Pointer; data: Pointer): Boolean; static; inline;
   end;
 
-  TMemProfilerNodeTree = specialize TSimpleArrayNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO, TNodeComparator>;
-  //TMemProfilerNodeTree = specialize TPointerArrayNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO, TNodeComparator>;
+  TMemProfilerNodeTree = specialize TPointerArrayNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO, TNodeComparator>;
 
   TMemUsageMonitor = class sealed(specialize TDictionary<Pointer, SizeInt>)
     function AddPtr(p:pointer; Size:SizeInt):SizeInt; inline;
@@ -225,7 +224,7 @@ begin
 
   if MemoryManagerWasReplaced then SetMemoryManager(OldMM);
 
-  memprofiler_tree.SaveToFile(filename);
+  memprofiler_tree.SaveToFile(filename, '.memprof');
 
   if MemoryManagerWasReplaced then SetMemoryManager(NewMM);
 end;

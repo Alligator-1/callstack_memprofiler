@@ -18,7 +18,6 @@
         <ComponentName Value="MainForm"/>
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
-        <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
         <CursorPos Y="8"/>
         <UsageCount Value="20"/>
@@ -37,17 +36,41 @@
       </Unit>
       <Unit>
         <Filename Value="..\source\callstack_memprofiler.pas"/>
-        <EditorIndex Value="-1"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="2"/>
+        <TopLine Value="209"/>
+        <CursorPos X="41" Y="227"/>
         <UsageCount Value="10"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="..\source\nodetree\nodetree.pas"/>
+        <EditorIndex Value="3"/>
+        <TopLine Value="153"/>
+        <CursorPos X="50" Y="175"/>
+        <UsageCount Value="10"/>
+        <Loaded Value="True"/>
       </Unit>
     </Units>
-    <JumpHistory HistoryIndex="1">
+    <JumpHistory HistoryIndex="4">
       <Position>
         <Filename Value="example_callstack_memprofiler.lpr"/>
       </Position>
       <Position>
         <Filename Value="umainform.pas"/>
         <Caret Line="8"/>
+      </Position>
+      <Position>
+        <Filename Value="..\source\callstack_memprofiler.pas"/>
+        <Caret Line="17" Column="50"/>
+      </Position>
+      <Position>
+        <Filename Value="..\source\nodetree\nodetree.pas"/>
+        <Caret Line="175" Column="37" TopLine="151"/>
+      </Position>
+      <Position>
+        <Filename Value="..\source\callstack_memprofiler.pas"/>
+        <Caret Line="16" Column="9" TopLine="4"/>
       </Position>
     </JumpHistory>
     <RunParams>

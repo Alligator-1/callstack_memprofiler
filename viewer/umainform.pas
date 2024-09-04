@@ -12,8 +12,7 @@ uses
 type
   TAddrNameDict = specialize TDictionary<Pointer, String>;
 
-  TMemProfilerTree = specialize TSimpleArrayNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO, TAbstractNodeComparator>;
-  //TMemProfilerTree = specialize TPointerArrayNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO, TAbstractNodeComparator>;
+  TMemProfilerTree = specialize TPointerArrayNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO, TAbstractNodeComparator>;
 
   TMainForm = class(TForm)
     btnLoadExecutable: TButton;
