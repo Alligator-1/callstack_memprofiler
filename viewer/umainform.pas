@@ -14,9 +14,12 @@ type
 
   TMemProfilerTree = specialize TPointerArrayNodeTree<TMemProfilerNodeData, TDefaultNodeDataIO, TAbstractNodeComparator>;
 
+  { TMainForm }
+
   TMainForm = class(TForm)
     btnLoadExecutable: TButton;
     btnLoadMemprofile: TButton;
+    IdleTimer1: TIdleTimer;
     vt: TLazVirtualStringTree;
     OpenDialog: TOpenDialog;
     procedure btnLoadExecutableClick(Sender: TObject);
@@ -24,6 +27,7 @@ type
     procedure FormClose(Sender: TObject; var CloseAction: TCloseAction);
     procedure FormCreate(Sender: TObject);
     procedure FormDropFiles(Sender: TObject; const FileNames: array of string);
+    procedure IdleTimer1Timer(Sender: TObject);
     procedure vtBeforeCellPaint(Sender: TBaseVirtualTree;
       TargetCanvas: TCanvas; Node: PVirtualNode; Column: TColumnIndex;
       CellPaintMode: TVTCellPaintMode; CellRect: TRect; var ContentRect: TRect);
@@ -144,6 +148,12 @@ begin
   end;
 end;
 
+procedure TMainForm.IdleTimer1Timer(Sender: TObject);
+begin
+  TIdleTimer(Sender).Enabled:=False;
+  vt.Header.AutoFitColumns(False);
+end;
+
 procedure TMainForm.vtBeforeCellPaint(Sender: TBaseVirtualTree; TargetCanvas: TCanvas; Node: PVirtualNode; Column: TColumnIndex; CellPaintMode: TVTCellPaintMode; CellRect: TRect; var ContentRect: TRect);
 begin
   case Column of
@@ -206,8 +216,7 @@ procedure TMainForm.vtExpanded(Sender: TBaseVirtualTree; Node: PVirtualNode);
 begin
   with Sender do
     if (ChildCount[Node]=1) and (([vsToggling,vsExpanded] * GetFirstChild(Node)^.States)=[]) then ToggleNode(GetFirstChild(Node));
-
-  //TLazVirtualStringTree(Sender).Header.AutoFitColumns(False); // need timeout
+  IdleTimer1.Enabled:=True;
 end;
 
 procedure TMainForm.vtExpanding(Sender: TBaseVirtualTree; Node: PVirtualNode; var Allowed: Boolean);

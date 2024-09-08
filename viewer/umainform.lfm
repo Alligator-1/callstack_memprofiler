@@ -53,4 +53,11 @@ object MainForm: TMainForm
   object OpenDialog: TOpenDialog
     Left = 16
   end
+  object IdleTimer1: TIdleTimer
+    Enabled = False
+    Interval = 200
+    OnTimer = IdleTimer1Timer
+    Left = 16
+    Top = 64
+  end
 end
